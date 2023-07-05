@@ -1,0 +1,35 @@
+---
+title: "Raphanus_specimen_map"
+author: "Julia Harencar"
+author: "Julia Harenčár"
+date: "07/05/2023"
+execute:
+  echo: true #will keep code chunks
+  warning: false #removes warning functions
+format: 
+  html: 
+    self-contained: true #makes one html file to render that is sharable
+    page-layout: full #uses the full page
+    code-fold: true #lets user fold up codes
+    code-tools: true #makes an option in the upper left for users to reveal/hide all code and copy source code
+    #makes long lines of code rap
+    code-overflow: wrap
+    #makes table of contents
+    toc: true
+    #sets location of table of contents
+    toc-location: left
+#set theme settings. in this case user can switch between light and dark mode
+theme:
+  #give light option
+  light: flatly
+  #give dark option
+  dark: darkly
+---
+
+## *Raphanus* specimen map
+
+Creating a map of California *Raphanus* specimen locations and collection years.
+
+```{r}
+
+```
