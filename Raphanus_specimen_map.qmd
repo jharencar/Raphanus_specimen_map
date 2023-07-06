@@ -31,5 +31,76 @@ theme:
 Creating a map of California *Raphanus* specimen locations and collection years.
 
 ```{r}
+# load libraries
+library("tidyverse")
+library("ggplot2")
+
+# Read in occurance data from CCH2 search for "Raphanus" (had to delete verbatim coordinates because contain crazy characters)
+occ_full <- read.csv("Raphanus_occurrences.csv", header = T)
+
+# pare down data: keep only reccords from CA, remove rows without a collection year, remove " County" and "Co." from county names so each county only has one name. 
+string_to_remove <- c(" County", " Co.")
+occ <- occ_full %>% 
+  select(id, scientificName, genus, specificEpithet, year, stateProvince, county, decimalLatitude, decimalLongitude) %>% 
+  filter(stateProvince == "California") %>% 
+  drop_na(year, county) %>% 
+  mutate(county = str_remove_all(county, paste(string_to_remove, collapse = "|")))
+  
+# fill in missing coordinates with a genereic per county point
+# determine which counties are represented:
+unique(occ$county)
+
+# fill missing lat and long with the average lat or long for that county
+occ2 <- occ %>%
+  filter(!county =="") %>% 
+  group_by(county) %>%
+  mutate(decimalLatitude = ifelse(is.na(decimalLatitude), mean(decimalLatitude, na.rm = TRUE), decimalLatitude),
+         decimalLongitude = ifelse(is.na(decimalLongitude), mean(decimalLongitude, na.rm = TRUE), decimalLongitude)) %>% 
+  drop_na(decimalLatitude)
+  
+## Plot on map of CA  
+library(maps)
+library(ggmap)
+library(grid)
+
+# compute the bounding box for sample map
+bbox <- make_bbox(lat = decimalLatitude, lon = decimalLongitude, data = occ2)
+
+# adjust right bound to include all of CA
+bbox["right"] <- -114.00
+
+# get map of CA
+# register_google(key = "AIzaSyB39SQ16tq5W05hnFRHx6CVSKzH1iq1Mf0")
+california_map <- get_map(location = bbox, zoom = 6, maptype = "terrain")
+
+# reverse order for plotting
+occ2 <- occ2[order(-occ2$year), ]
+
+# plot points on map
+Raph_map <- ggmap(california_map) +
+  geom_point(data = occ2, size = 2, pch = 21, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year)) +
+  scale_fill_distiller(palette = "Spectral") +
+  labs(title = "CCH2 all Raphanus spp. specimen locations")
+  
+ggsave("CCH2_Raphanus_specimen_map.pdf", Raph_map)
+
+## OG simple map - gray CA outline
+# # Get map data for California
+# ca_map <- map_data("state", "california")
+# 
+# # Create ggplot object with California outline
+# ggplot(ca_map, aes(x = long, y = lat, group = group)) +
+#   geom_polygon(fill = "lightgray", colour = "white") +
+#   coord_fixed(1.3)  # Adjust the aspect ratio if needed
+# 
+# # Add points to the plot
+# ggplot(ca_map, aes(x = long, y = lat)) +
+#   geom_polygon(fill = "lightgray", colour = "white") +
+#   geom_point(data = occ2, aes(x = decimalLongitude, y = decimalLatitude, color = year)) +
+#   scale_color_gradient(low = "blue", high = "red", limits = c(1857, 2023)) +
+#   labs(title = "Lat Long Coordinates in California by Year", x = "Longitude", y = "Latitude") +
+#   coord_fixed(1.3)  # Adjust the aspect ratio if needed
 
 ```
+
+\
