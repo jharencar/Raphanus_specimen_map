@@ -28,13 +28,266 @@ theme:
 
 ## *Raphanus* specimen map
 
-Creating a map of California *Raphanus* specimen locations and collection years.
+Creating a map of California *Raphanus* specimen locations and collection years.\
+\
+# gbif data maps:
 
 ```{r}
 # load libraries
-library("tidyverse")
-library("ggplot2")
+library(tidyverse)
+library(ggplot2)
+library(maps)
+library(ggmap)
+library(grid)
+library(patchwork)
+```
+# Readinbg in data
+```{r}
+# Read in gbif data; search for "Raphanus L.", occurance status present, with or without coordinates, and US only.
 
+# Citation: GBIF.org (20 July 2023) GBIF Occurrence Download https://doi.org/10.15468/dl.2srzch
+
+gbif_full <- read.csv("gbif_Raphanus_all_present.csv", header = T)
+
+# pare down gbif data:remove rows without a collection year, remove rows with no county AND no coordinates, remove " County" and "Co." from county names so each county only has one name.
+string_to_remove <- c(" County", " Co.")
+
+gbif <- gbif_full %>%
+  select(scientificName, year, stateProvince, county, decimalLatitude, decimalLongitude, recordedBy, basisOfRecord) %>%
+  drop_na(year) %>%
+  filter(!is.na(decimalLatitude) & !is.na(county)) %>%
+  mutate(county = str_remove_all(county, paste(string_to_remove, collapse = "|")))
+
+# fill missing lat and long with the average lat or long for that county
+# Use ifelse to conditionally fill missing lat and long only when there is a county present
+gbif2 <- gbif %>%
+  group_by(county) %>%
+  mutate(
+    decimalLatitude = ifelse(!is.na(county) & is.na(decimalLatitude), mean(decimalLatitude, na.rm = TRUE), decimalLatitude),
+    decimalLongitude = ifelse(!is.na(county) & is.na(decimalLongitude), mean(decimalLongitude, na.rm = TRUE), decimalLongitude)
+  ) %>%
+  drop_na(decimalLatitude)
+
+# get map
+# register_google(key = "AIzaSyB39SQ16tq5W05hnFRHx6CVSKzH1iq1Mf0")
+map <- get_map(location = c(lon=-100 , lat= 40), zoom =3, maptype = "terrain")
+# ggmap(map) # for testing map
+```
+# Plot specimen collection locations
+```{r}
+## plot only herbarium specimen collection locations 
+gbif_spec2 <- gbif2 %>%
+filter(basisOfRecord == "PRESERVED_SPECIMEN")
+ 
+Raph_spec_map <- ggmap(map) +
+  geom_point(data = gbif_spec2, size = 2, pch = 21, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year)) +
+  ylim(14,52) +
+  xlim(-127, -56) +
+  scale_fill_distiller(palette = "Spectral") +
+  labs(title = "gbif Raphanus spp. specimen collection locations")
+
+ggsave("gbif_all_Raphanus_specimen_map.pdf", Raph_spec_map, width = 7, height = 4.5, units = "in")
+
+# only raphinastrum
+gbif_spec_raph <- gbif_spec2 %>%
+filter(scientificName == "Raphanus raphanistrum L.")
+ 
+Raph_spec_raph_map <- ggmap(map) +
+  geom_point(data = gbif_spec_raph, size = 2, pch = 21, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year)) +
+  ylim(14,52) +
+  xlim(-127, -56) +
+  scale_fill_distiller(palette = "Spectral") +
+  labs(title = "gbif R. raphinastrum specimen collection locations")
+
+# only sativus
+gbif_spec_sati <- gbif_spec2 %>%
+filter(scientificName == "Raphanus sativus L.")
+ 
+Raph_spec_sati_map <- ggmap(map) +
+  geom_point(data = gbif_spec_sati, size = 2, pch = 21, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year)) +
+  ylim(14,52) +
+  xlim(-127, -56) +
+  scale_fill_distiller(palette = "Spectral") +
+  labs(title = "gbif R. sativus specimen collection locations")
+
+# only hybrids - not bothering, it is only 2 specimens from CA in 2007 and 2013
+gbif_spec_hyb <- gbif_spec %>%
+filter(species == "Raphanus raphanistrum × sativus")
+
+# no genus and hybrids - not bothering, only 35, quite a few in mexico
+gbif_spec_hyb.no <- gbif_spec %>%
+filter(species %in% c("","Raphanus raphanistrum × sativus"))
+ 
+# patchwork multipanel plot to compare species
+gbif_2panel <- Raph_spec_sati_map/Raph_spec_raph_map
+
+ggsave("gbif_R.sativus_R.raphinastrum_specimens_map.pdf", gbif_2panel, width = 7, height = 9, units = "in")
+```
+## Plotting only old specimen locations
+```{r}
+## Plot only old specimens
+
+# plot only herbarium specimen collection locations 
+gbif_spec2 <- gbif2 %>%
+filter(basisOfRecord == "PRESERVED_SPECIMEN")
+
+# simplify scientific name to make distinguishing sativus and raphanistrum possible
+# Create a new column with simplified names
+gbif_spec2 <- gbif_spec2 %>%
+  mutate(simplifiedName = case_when(
+    startsWith(scientificName, "Raphanus raphanistrum") ~ "Raphanus raphanistrum",
+    startsWith(scientificName, "Raphanus sativus") ~ "Raphanus sativus",
+    TRUE ~ scientificName  # Keep the original name if it doesn't match the patterns above
+  ))
+
+# Plot only pre 1900 specimen locations
+gbif_spec_pre1900 <- gbif_spec2 %>% 
+  filter(year <= 1900)
+
+pre1900_Raph_spec_map <- ggmap(map) +
+  geom_point(data = gbif_spec_pre1900, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
+  ylim(14,52) +
+  xlim(-127, -56) +
+  scale_fill_distiller(palette = "Spectral") +
+  scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
+  labs(title = "1900 and older Raphanus specimen collection locations")
+
+# Plot 1900 to 1920 specimen locations
+gbif_spec_1900to1920 <- gbif_spec2 %>% 
+  filter(year <= 1920 & year >= 1900)
+
+btw_1900.1920_Raph_spec_map <- ggmap(map) +
+  geom_point(data = gbif_spec_1900to1920, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
+  ylim(14,52) +
+  xlim(-127, -56) +
+  scale_fill_distiller(palette = "Spectral") +
+  scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
+  labs(title = "1900-1920 Raphanus specimen collection locations")
+
+# save multipanel 
+old_spec <- pre1900_Raph_spec_map/btw_1900.1920_Raph_spec_map
+
+ggsave("pre_1900+1900-1920_specimen_maps.pdf", old_spec, width = 7, height = 9, units = "in")
+
+# create plots for each 20 year period to inform sampling plan
+
+# 1920-40
+gbif_spec_1920to1940 <- gbif_spec2 %>% 
+  filter(year >= 1920 & year <= 1940)
+
+btw_1920.1940_Raph_spec_map <- ggmap(map) +
+  geom_point(data = gbif_spec_1920to1940, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
+  ylim(14,52) +
+  xlim(-127, -56) +
+  scale_fill_distiller(palette = "Spectral") +
+  scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
+  labs(title = "1920-1940 Raphanus specimen collection locations")
+
+# 1940-60
+gbif_spec_1940to1960 <- gbif_spec2 %>% 
+  filter(year >= 1940 & year <= 1960)
+
+btw_1940.1960_Raph_spec_map <- ggmap(map) +
+  geom_point(data = gbif_spec_1940to1960, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
+  ylim(14,52) +
+  xlim(-127, -56) +
+  scale_fill_distiller(palette = "Spectral") +
+  scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
+  labs(title = "1940-1960 Raphanus specimen collection locations")
+
+# 1960-80
+gbif_spec_1960to1980 <- gbif_spec2 %>% 
+  filter(year >= 1960 & year <= 1980)
+
+btw_1960.1980_Raph_spec_map <- ggmap(map) +
+  geom_point(data = gbif_spec_1960to1980, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
+  ylim(14,52) +
+  xlim(-127, -56) +
+  scale_fill_distiller(palette = "Spectral") +
+  scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
+  labs(title = "1960-1980 Raphanus specimen collection locations")
+
+# 1980-2000
+gbif_spec_1980to2000 <- gbif_spec2 %>% 
+  filter(year >= 1980 & year <= 2000)
+
+btw_1980.2000_Raph_spec_map <- ggmap(map) +
+  geom_point(data = gbif_spec_1980to2000, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
+  ylim(14,52) +
+  xlim(-127, -56) +
+  scale_fill_distiller(palette = "Spectral") +
+  scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
+  labs(title = "1980-2000 Raphanus specimen collection locations")
+
+# 2000-2023
+gbif_spec_2000to2023 <- gbif_spec2 %>% 
+  filter(year >= 2000)
+
+btw_2000.2023_Raph_spec_map <- ggmap(map) +
+  geom_point(data = gbif_spec_2000to2023, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
+  ylim(14,52) +
+  xlim(-127, -56) +
+  scale_fill_distiller(palette = "Spectral") +
+  scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
+  labs(title = "2000-2023 Raphanus specimen collection location")
+  
+# make into a multipanel plot
+map_panel_20yr_periods <- (btw_1900.1920_Raph_spec_map/btw_1920.1940_Raph_spec_map/btw_1940.1960_Raph_spec_map) | (btw_1960.1980_Raph_spec_map/btw_1980.2000_Raph_spec_map/btw_2000.2023_Raph_spec_map)
+
+# save
+ggsave("map_panel_20yr_periods.pdf", map_panel_20yr_periods, width = 14, height = 15, units = "in")
+
+```
+# plot all occurance/observation data
+```{r}
+# plot all points (including observation data) on map
+Raph_all_map <- ggmap(map) +
+  geom_point(data = gbif, size = 2, pch = 21, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year)) +
+  ylim(14,52) +
+  xlim(-127, -56) +
+  scale_fill_distiller(palette = "Spectral") +
+  labs(title = "gbif all Raphanus spp. records")
+
+## plot all occurance/observation data
+# all spp together
+gbif_occ <- gbif %>%
+filter(basisOfRecord %in% c("HUMAN_OBSERVATION", "OCCURRENCE", "OBSERVATION"))
+ 
+Raph_occ_map <- ggmap(map) +
+  geom_point(data = gbif_occ, size = 2, pch = 21, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year)) +
+  ylim(14,52) +
+  xlim(-127, -56) +
+  scale_fill_distiller(palette = "Spectral") +
+  labs(title = "gbif Raphanus spp. occurance/observation locations")
+
+# only raphinastrum
+
+# only sativus
+
+#ggsave("gbif_Raphanus_occurance_map.pdf", Raph_occ_map)
+
+```
+
+
+# Number of specimens through time
+```{r}
+## Make a table for each 20 year period since 1920 (oldest is 1927)
+# the dataframe has already been filtered to only include herbarium specimen records from North America
+# Create a new column for 20-year periods
+gbif_spec <- gbif_spec %>%
+  mutate(period = paste0(floor(year / 20) * 20, "-", floor(year / 20) * 20 + 19))
+
+# Count the number of rows for each 20-year period
+count_by_period_table <- gbif_spec %>%
+  group_by(period) %>%
+  summarise(count = n())
+
+# export to csv
+write.csv(count_by_period_table, file = "specimen_count_by_time_period_table.csv", row.names = FALSE)
+```
+
+# CCH2 data only
+```{r}
 # Read in occurance data from CCH2 search for "Raphanus" (had to delete verbatim coordinates because contain crazy characters)
 occ_full <- read.csv("Raphanus_occurrences.csv", header = T)
 
@@ -59,10 +312,6 @@ occ2 <- occ %>%
   drop_na(decimalLatitude)
   
 ## Plot on map of CA  
-library(maps)
-library(ggmap)
-library(grid)
-
 # compute the bounding box for sample map
 bbox <- make_bbox(lat = decimalLatitude, lon = decimalLongitude, data = occ2)
 
@@ -103,4 +352,98 @@ ggsave("CCH2_Raphanus_specimen_map.pdf", Raph_map)
 
 ```
 
-\
+No need to combine as done below. gbif includes all CCH records...
+
+Combine CCH2 and gbif specimen record data and plot again
+
+```{r}
+
+# Read in occurance data from CCH2 search for "Raphanus" (had to delete verbatim coordinates because contain crazy characters)
+
+cch_full <- read.csv("CCH2_Raphanus_occurrences.csv", header = T)
+
+# pare down CCH2 data: remove rows without a collection year, remove rows with no county AND no coordinates, remove " County" and "Co." from county names so each county only has one name.
+
+string_to_remove <- c(" County", " Co.")
+
+cch <- cch_full %>%
+
+  select(scientificName, year, stateProvince, county, decimalLatitude, decimalLongitude, recordedBy, basisOfRecord) %>%
+
+#  filter(stateProvince == "California") %>%
+
+  drop_na(year) %>%
+
+  filter(!is.na(decimalLatitude) & !is.na(county)) %>%
+
+  mutate(county = str_remove_all(county, paste(string_to_remove, collapse = "|")))
+
+# Read in gbif data; search for "Raphanus L.", occurance status present, with or without coordinates, and US only.
+
+# Citation: GBIF.org (20 July 2023) GBIF Occurrence Download https://doi.org/10.15468/dl.2srzch
+
+gbif_full <- read.csv("gbif_Raphanus_all_present.csv", header = T)
+
+# pare down gbif data:
+
+gbif <- gbif_full %>%
+
+  select(scientificName, year, stateProvince, county, decimalLatitude, decimalLongitude, recordedBy, basisOfRecord) %>%
+
+  drop_na(year) %>%
+
+  filter(!is.na(decimalLatitude) & !is.na(county)) %>%
+
+  mutate(county = str_remove_all(county, paste(string_to_remove, collapse = "|")))
+
+# Join the datasets
+
+comb_full <- gbif %>%
+
+  full_join(cch, by = c("scientificName", "year", "stateProvince", "county", "decimalLatitude", "decimalLongitude", "recordedBy", "basisOfRecord"))
+
+comb_anti <- gbif %>%
+
+  anti_join(cch, by = c("scientificName", "year", "stateProvince", "county", "decimalLatitude", "decimalLongitude", "recordedBy", "basisOfRecord"))
+
+#Test joining with mapping:
+
+# get map
+
+# register_google(key = "AIzaSyB39SQ16tq5W05hnFRHx6CVSKzH1iq1Mf0")
+
+map <- get_map(location = c(lon=-100 , lat= 40), zoom =3, maptype = "terrain")
+
+ggmap(map)
+
+comb_spec <- comb_full %>%
+
+filter(basisOfRecord == "PRESERVED_SPECIMEN")
+
+Raph_spec_map_full <- ggmap(map) +
+
+  geom_point(data = comb_spec, size = 2, pch = 21, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year)) +
+
+  ylim(14,52) +
+
+  xlim(-127, -56) +
+
+  scale_fill_distiller(palette = "Spectral") +
+
+  labs(title = "Raphanus spp. specimen collection locations")
+
+# fill missing lat and long with the average lat or long for that county
+
+comb2 <- comb%>%
+
+  filter(!county =="") %>%
+
+  group_by(county) %>%
+
+  mutate(decimalLatitude = ifelse(is.na(decimalLatitude), mean(decimalLatitude, na.rm = TRUE), decimalLatitude),
+
+         decimalLongitude = ifelse(is.na(decimalLongitude), mean(decimalLongitude, na.rm = TRUE), decimalLongitude)) %>%
+
+  drop_na(decimalLatitude)
+
+```
