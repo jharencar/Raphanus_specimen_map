@@ -1,6 +1,5 @@
 ---
 title: "Raphanus_specimen_map"
-author: "Julia Harencar"
 author: "Julia Harenčár"
 date: "07/05/2023"
 execute:
@@ -26,13 +25,12 @@ theme:
   dark: darkly
 ---
 
-## *Raphanus* specimen map
+## *Raphanus* specimen maps
 
-Creating a map of California *Raphanus* specimen locations and collection years.\
+Creating maps of *Raphanus* specimen locations and collection years.\
 \
-# gbif data maps:
 
-```{r}
+```{r load libraries}
 # load libraries
 library(tidyverse)
 library(ggplot2)
@@ -40,9 +38,11 @@ library(maps)
 library(ggmap)
 library(grid)
 library(patchwork)
+library(plotly)
+library(htmlwidgets)
 ```
-# Readinbg in data
-```{r}
+# Reading in and cleaning data
+```{r import and clean data}
 # Read in gbif data; search for "Raphanus L.", occurance status present, with or without coordinates, and US only.
 
 # Citation: GBIF.org (20 July 2023) GBIF Occurrence Download https://doi.org/10.15468/dl.2srzch
@@ -72,62 +72,8 @@ gbif2 <- gbif %>%
 # register_google(key = "AIzaSyB39SQ16tq5W05hnFRHx6CVSKzH1iq1Mf0")
 map <- get_map(location = c(lon=-100 , lat= 40), zoom =3, maptype = "terrain")
 # ggmap(map) # for testing map
-```
-# Plot specimen collection locations
-```{r}
-## plot only herbarium specimen collection locations 
-gbif_spec2 <- gbif2 %>%
-filter(basisOfRecord == "PRESERVED_SPECIMEN")
- 
-Raph_spec_map <- ggmap(map) +
-  geom_point(data = gbif_spec2, size = 2, pch = 21, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year)) +
-  ylim(14,52) +
-  xlim(-127, -56) +
-  scale_fill_distiller(palette = "Spectral") +
-  labs(title = "gbif Raphanus spp. specimen collection locations")
 
-ggsave("gbif_all_Raphanus_specimen_map.pdf", Raph_spec_map, width = 7, height = 4.5, units = "in")
-
-# only raphinastrum
-gbif_spec_raph <- gbif_spec2 %>%
-filter(scientificName == "Raphanus raphanistrum L.")
- 
-Raph_spec_raph_map <- ggmap(map) +
-  geom_point(data = gbif_spec_raph, size = 2, pch = 21, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year)) +
-  ylim(14,52) +
-  xlim(-127, -56) +
-  scale_fill_distiller(palette = "Spectral") +
-  labs(title = "gbif R. raphinastrum specimen collection locations")
-
-# only sativus
-gbif_spec_sati <- gbif_spec2 %>%
-filter(scientificName == "Raphanus sativus L.")
- 
-Raph_spec_sati_map <- ggmap(map) +
-  geom_point(data = gbif_spec_sati, size = 2, pch = 21, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year)) +
-  ylim(14,52) +
-  xlim(-127, -56) +
-  scale_fill_distiller(palette = "Spectral") +
-  labs(title = "gbif R. sativus specimen collection locations")
-
-# only hybrids - not bothering, it is only 2 specimens from CA in 2007 and 2013
-gbif_spec_hyb <- gbif_spec %>%
-filter(species == "Raphanus raphanistrum × sativus")
-
-# no genus and hybrids - not bothering, only 35, quite a few in mexico
-gbif_spec_hyb.no <- gbif_spec %>%
-filter(species %in% c("","Raphanus raphanistrum × sativus"))
- 
-# patchwork multipanel plot to compare species
-gbif_2panel <- Raph_spec_sati_map/Raph_spec_raph_map
-
-ggsave("gbif_R.sativus_R.raphinastrum_specimens_map.pdf", gbif_2panel, width = 7, height = 9, units = "in")
-```
-## Plotting only old specimen locations
-```{r}
-## Plot only old specimens
-
-# plot only herbarium specimen collection locations 
+# Separate out only the herbarium specimen records
 gbif_spec2 <- gbif2 %>%
 filter(basisOfRecord == "PRESERVED_SPECIMEN")
 
@@ -140,14 +86,190 @@ gbif_spec2 <- gbif_spec2 %>%
     TRUE ~ scientificName  # Keep the original name if it doesn't match the patterns above
   ))
 
+```
+## Plot specimen collection locations
+```{r plot all specimens}
+# plot all herbarium specimen locations on one map
+Raph_spec_map <- ggmap(map) +
+  geom_point(data = gbif_spec2, size = 2, aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName), color = "black") +
+  ylim(25, 50) +
+  xlim(-124, -65) +
+  scale_fill_distiller(palette = "Spectral") +
+  scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
+  labs(title = "Raphanus specimen collection locations")
+
+#ggsave("gbif_all_Raphanus_specimen_map.pdf", Raph_spec_map, width = 7, height = 4.5, units = "in")
+
+# Try making an interactive plot
+interactive_plot <- 
+  plot_ly(data = gbif_spec2, 
+          type = "scattermapbox", 
+          mode = "markers", 
+          hoverinfo = "text",
+          lat = ~decimalLatitude, 
+          lon = ~decimalLongitude,
+          text = ~paste("Scientific Name: ", simplifiedName, "<br>Year: ", year),
+          marker = list(size = 8, color = ~year, colorscale = "Spectral", cmin = min(gbif_spec2$year), cmax = max(gbif_spec2$year))) %>%
+  layout(title = "Raphanus specimen collection locations",
+         mapbox = list(style = "open-street-map", zoom = 4, center = list(lat = 37.5, lon = -95)),
+         xaxis = list(showgrid = FALSE, zeroline = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE))
+
+# Display the interactive plot
+interactive_plot
+
+# Save the interactive plot to share
+saveWidget(interactive_plot, "interactive_specimen_by_year_plot.html")
+
+# Attempt to add diff symbols for diff species... medium successful
+# First, need to convert simplifiedName to a factor with numeric values so it can be used to code different shapes
+gbif_spec2$symbol <- as.numeric(factor(gbif_spec2$simplifiedName))
+
+# Make the plot
+interactive_plot2 <- plot_geo(gbif_spec2, lat = ~decimalLatitude, lon = ~decimalLongitude, color = ~year, colors = "Spectral",
+                             symbol = ~symbol, symbols = c("circle", "cross", "triangle-up", "diamond"),
+                             marker = list(size = 8), mode = "markers") %>%
+  layout(title = "Raphanus specimen collection locations",
+         mapbox = list(style = "open-street-map", zoom = 4, center = list(lat = 37.5, lon = -95)))
+
+# Display the interactive plot
+#interactive_plot2
+
+# Plot only raphanistrum
+gbif_spec_raph <- gbif_spec2 %>%
+filter(scientificName == "Raphanus raphanistrum L.")
+ 
+Raph_spec_raph_map <- ggmap(map) +
+  geom_point(data = gbif_spec_raph, size = 2, pch = 21, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year)) +
+  ylim(25,50) +
+  xlim(-124, -65) +
+  scale_fill_distiller(palette = "Spectral") +
+  labs(title = "gbif R. raphinastrum specimen collection locations")
+
+# only sativus
+gbif_spec_sati <- gbif_spec2 %>%
+filter(scientificName == "Raphanus sativus L.")
+ 
+Raph_spec_sati_map <- ggmap(map) +
+  geom_point(data = gbif_spec_sati, size = 2, pch = 21, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year)) +
+  ylim(25,50) +
+  xlim(-124, -65) +
+  scale_fill_distiller(palette = "Spectral") +
+  labs(title = "gbif R. sativus specimen collection locations")
+
+# only hybrids - not bothering, it is only 2 specimens from CA in 2007 and 2013
+gbif_spec_hyb <- gbif_spec2 %>%
+filter(scientificName == "Raphanus raphanistrum × sativus")
+
+# no genus and hybrids - not bothering, only 35, quite a few in mexico
+gbif_spec_hyb.no <- gbif_spec2 %>%
+filter(scientificName %in% c("","Raphanus raphanistrum × sativus"))
+ 
+# patchwork multipanel plot to compare species
+gbif_2panel <- Raph_spec_sati_map/Raph_spec_raph_map
+
+ggsave("gbif_R.sativus_R.raphinastrum_specimens_map.pdf", gbif_2panel, width = 7, height = 9, units = "in")
+```
+## Plot and count by county
+```{r plot by county}
+
+# plot by county in California
+CA_barplot_by_spp.co <- gbif_spec2 %>% 
+  filter(stateProvince == "California") %>% 
+  group_by(county, simplifiedName) %>%
+  summarise(count = n()) %>% 
+  ggplot(aes(x=county, y=count, fill=simplifiedName)) + 
+  geom_bar(stat = "identity") +
+  labs(y = "Number of Individuals") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+ggsave("CA_barplot_by_spp.co.pdf", CA_barplot_by_spp.co, width = 14, height = 7, units = "in")
+
+# Get just the per county counts from most to least:
+CA_per_co_counts <- gbif_spec2 %>% 
+  filter(stateProvince == "California") %>% 
+  group_by(county, simplifiedName) %>%
+  summarise(count = n()) %>% 
+  arrange(desc(count))
+
+write.csv(CA_per_co_counts, file = "CA_per_co_counts.csv", row.names = FALSE)
+
+# plot by county in NW
+NW_barplot_by_spp.co <- gbif_spec2 %>% 
+  filter(stateProvince %in% c("Washington","Oregon")) %>% 
+  group_by(county, simplifiedName) %>%
+  summarise(count = n()) %>% 
+  ggplot(aes(x=county, y=count, fill=simplifiedName)) + 
+  geom_bar(stat = "identity") +
+  labs(y = "Number of Individuals") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+ggsave("NW_barplot_by_spp.co.pdf", NW_barplot_by_spp.co, width = 14, height = 7, units = "in")
+
+# Get just the per county counts from most to least:
+NW_per_co_counts <- gbif_spec2 %>% 
+  filter(stateProvince %in% c("Washington","Oregon")) %>% 
+  group_by(county, simplifiedName) %>%
+  summarise(count = n()) %>% 
+  arrange(desc(count))
+
+write.csv(NW_per_co_counts, file = "NW_per_co_counts.csv", row.names = FALSE)
+
+# plot by county in NE
+NE_barplot_by_spp.co <- gbif_spec2 %>% 
+  filter(stateProvince %in% c("Maine", "Vermont", "New Hampshire", "Pennsylvania", "Massachusetts" , "Rhode Islande", "Connecticut", "New York", "New Jersey","Delaware", "Maryland", "District of Columbia")) %>% 
+  group_by(county, simplifiedName) %>%
+  summarise(count = n()) %>% 
+  ggplot(aes(x=county, y=count, fill=simplifiedName)) + 
+  geom_bar(stat = "identity") +
+  labs(y = "Number of Individuals") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+ggsave("NE_barplot_by_spp.co.pdf", NE_barplot_by_spp.co, width = 14, height = 7, units = "in")
+
+# Get just the per county counts from most to least:
+NE_per_co_counts <- gbif_spec2 %>% 
+  filter(stateProvince %in% c("Maine", "Vermont", "New Hampshire", "Pennsylvania", "Massachusetts" , "Rhode Islande", "Connecticut", "New York", "New Jersey","Delaware", "Maryland", "District of Columbia")) %>% 
+  group_by(county, simplifiedName) %>%
+  summarise(count = n()) %>% 
+  arrange(desc(count))
+
+write.csv(NE_per_co_counts, file = "NE_per_co_counts.csv", row.names = FALSE)
+
+# plot by county in SE
+SE_barplot_by_spp.co <- gbif_spec2 %>% 
+  filter(stateProvince %in% c("Virginia", "North Carolina", "South Carolina", "Tennesee", "Georgia", "Alabama", "Florida", "Mississippi", "Louisiana", "Arkansas")) %>% 
+  group_by(county, simplifiedName) %>%
+  summarise(count = n()) %>% 
+  ggplot(aes(x=county, y=count, fill=simplifiedName)) + 
+  geom_bar(stat = "identity") +
+  labs(y = "Number of Individuals") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+ggsave("SE_barplot_by_spp.co.pdf", SE_barplot_by_spp.co, width = 14, height = 7, units = "in")
+
+# Get just the per county counts from most to least:
+SE_per_co_counts <- gbif_spec2 %>% 
+  filter(stateProvince %in% c("Virginia", "North Carolina", "South Carolina", "Tennesee", "Georgia", "Alabama", "Florida", "Mississippi", "Louisiana", "Arkansas")) %>% 
+  group_by(county, simplifiedName) %>%
+  summarise(count = n()) %>% 
+  arrange(desc(count))
+
+write.csv(SE_per_co_counts, file = "SE_per_co_counts.csv", row.names = FALSE)
+```
+
+
+## Plotting only old specimen locations
+```{r plot based on time period}
+## Plot only old specimens
 # Plot only pre 1900 specimen locations
 gbif_spec_pre1900 <- gbif_spec2 %>% 
   filter(year <= 1900)
 
 pre1900_Raph_spec_map <- ggmap(map) +
   geom_point(data = gbif_spec_pre1900, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
-  ylim(14,52) +
-  xlim(-127, -56) +
+  ylim(25,50) +
+  xlim(-124, -65) +
   scale_fill_distiller(palette = "Spectral") +
   scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
   labs(title = "1900 and older Raphanus specimen collection locations")
@@ -158,8 +280,8 @@ gbif_spec_1900to1920 <- gbif_spec2 %>%
 
 btw_1900.1920_Raph_spec_map <- ggmap(map) +
   geom_point(data = gbif_spec_1900to1920, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
-  ylim(14,52) +
-  xlim(-127, -56) +
+  ylim(25,50) +
+  xlim(-124, -65) +
   scale_fill_distiller(palette = "Spectral") +
   scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
   labs(title = "1900-1920 Raphanus specimen collection locations")
@@ -177,8 +299,8 @@ gbif_spec_1920to1940 <- gbif_spec2 %>%
 
 btw_1920.1940_Raph_spec_map <- ggmap(map) +
   geom_point(data = gbif_spec_1920to1940, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
-  ylim(14,52) +
-  xlim(-127, -56) +
+  ylim(25,50) +
+  xlim(-124, -65) +
   scale_fill_distiller(palette = "Spectral") +
   scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
   labs(title = "1920-1940 Raphanus specimen collection locations")
@@ -189,8 +311,8 @@ gbif_spec_1940to1960 <- gbif_spec2 %>%
 
 btw_1940.1960_Raph_spec_map <- ggmap(map) +
   geom_point(data = gbif_spec_1940to1960, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
-  ylim(14,52) +
-  xlim(-127, -56) +
+  ylim(25,50) +
+  xlim(-124, -65) +
   scale_fill_distiller(palette = "Spectral") +
   scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
   labs(title = "1940-1960 Raphanus specimen collection locations")
@@ -201,8 +323,8 @@ gbif_spec_1960to1980 <- gbif_spec2 %>%
 
 btw_1960.1980_Raph_spec_map <- ggmap(map) +
   geom_point(data = gbif_spec_1960to1980, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
-  ylim(14,52) +
-  xlim(-127, -56) +
+  ylim(25,50) +
+  xlim(-124, -65) +
   scale_fill_distiller(palette = "Spectral") +
   scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
   labs(title = "1960-1980 Raphanus specimen collection locations")
@@ -213,8 +335,8 @@ gbif_spec_1980to2000 <- gbif_spec2 %>%
 
 btw_1980.2000_Raph_spec_map <- ggmap(map) +
   geom_point(data = gbif_spec_1980to2000, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
-  ylim(14,52) +
-  xlim(-127, -56) +
+  ylim(25,50) +
+  xlim(-124, -65) +
   scale_fill_distiller(palette = "Spectral") +
   scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
   labs(title = "1980-2000 Raphanus specimen collection locations")
@@ -225,8 +347,8 @@ gbif_spec_2000to2023 <- gbif_spec2 %>%
 
 btw_2000.2023_Raph_spec_map <- ggmap(map) +
   geom_point(data = gbif_spec_2000to2023, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
-  ylim(14,52) +
-  xlim(-127, -56) +
+  ylim(25,50) +
+  xlim(-124, -65) +
   scale_fill_distiller(palette = "Spectral") +
   scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
   labs(title = "2000-2023 Raphanus specimen collection location")
@@ -238,7 +360,7 @@ map_panel_20yr_periods <- (btw_1900.1920_Raph_spec_map/btw_1920.1940_Raph_spec_m
 ggsave("map_panel_20yr_periods.pdf", map_panel_20yr_periods, width = 14, height = 15, units = "in")
 
 ```
-# plot all occurance/observation data
+# Plot all occurance/observation data
 ```{r}
 # plot all points (including observation data) on map
 Raph_all_map <- ggmap(map) +
@@ -269,21 +391,149 @@ Raph_occ_map <- ggmap(map) +
 ```
 
 
-# Number of specimens through time
+## Tables and plots of number of specimens through time in different regions
 ```{r}
 ## Make a table for each 20 year period since 1920 (oldest is 1927)
 # the dataframe has already been filtered to only include herbarium specimen records from North America
 # Create a new column for 20-year periods
-gbif_spec <- gbif_spec %>%
+gbif_spec2 <- gbif_spec2 %>%
   mutate(period = paste0(floor(year / 20) * 20, "-", floor(year / 20) * 20 + 19))
 
 # Count the number of rows for each 20-year period
-count_by_period_table <- gbif_spec %>%
+count_by_period_table <- gbif_spec2 %>%
   group_by(period) %>%
   summarise(count = n())
 
+## Now I will break it down by focal region:
+
+# California
+# Count the number of rows for each 20-year period, each county, and each simplifiedName
+California_count_by_per.co.sp <- gbif_spec2 %>%
+  filter(stateProvince == "California") %>%
+  group_by(period, stateProvince, county, simplifiedName) %>%
+  summarise(count = n())
+
 # export to csv
-write.csv(count_by_period_table, file = "specimen_count_by_time_period_table.csv", row.names = FALSE)
+write.csv(California_count_by_per.co.sp, file = "California_specimen_count_by_per.co.sp.csv", row.names = FALSE)
+
+# Plot just San Diego because the most samples 
+SD_barplot_by_spp.period <- California_count_by_per.co.sp %>% 
+  filter(county == "San Diego") %>% 
+  ggplot(aes(x=period, y=count, fill=simplifiedName)) + 
+  geom_bar(stat = "identity") +
+  labs(y = "Number of Individuals") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+ggsave("SD_barplot_by_spp.period.pdf", SD_barplot_by_spp.period, width = 14, height = 7, units = "in")
+
+
+# Washinton & Oregon (NW)
+# Count the number of rows for each 20-year period, each county, and each simplifiedName
+NW_count_by_per.co.sp <- gbif_spec2 %>%
+  filter(stateProvince %in% c("Washington","Oregon")) %>%
+  group_by(period, stateProvince, county, simplifiedName) %>%
+  summarise(count = n())
+
+# export to csv
+write.csv(NW_count_by_per.co.sp, file = "NW_specimen_count_by_per.co.sp.csv", row.names = FALSE)
+
+# The North East (NE)
+# Count the number of rows for each 20-year period, each county, and each simplifiedName
+NE_count_by_per.co.sp <- gbif_spec2 %>%
+  filter(stateProvince %in% c("Maine", "Vermont", "New Hampshire", "Pennsylvania", "Massachusetts" , "Rhode Islande", "Connecticut", "New York", "New Jersey","Delaware", "Maryland", "District of Columbia")) %>%
+  group_by(period, stateProvince, county, simplifiedName) %>%
+  summarise(count = n())
+
+# export to csv
+write.csv(NE_count_by_per.co.sp, file = "NE_specimen_count_by_per.co.sp.csv", row.names = FALSE)
+
+# The South East (SE)
+# Count the number of rows for each 20-year period, each county, and each simplifiedName
+SE_count_by_per.co.sp <- gbif_spec2 %>%
+  filter(stateProvince %in% c("Virginia", "North Carolina", "South Carolina", "Tennesee", "Georgia", "Alabama", "Florida", "Mississippi", "Louisiana", "Arkansas")) %>%
+  group_by(period, stateProvince, county, simplifiedName) %>%
+  summarise(count = n())
+
+# export to csv
+write.csv(SE_count_by_per.co.sp, file = "SE_specimen_count_by_per.co.sp.csv", row.names = FALSE)
+```
+# Plot 5 year intervals
+```{r plotting 5 yr intervals}
+# Create a new column for 5-year periods
+gbif_spec2 <- gbif_spec2 %>%
+  mutate(period5 = paste0(floor(year / 5) * 5, "-", floor(year / 5) * 5 + 4))
+
+# Count the number of rows for each 5-year period
+count_by_period5_table <- gbif_spec2 %>%
+  group_by(period5, simplifiedName) %>%
+  summarise(count = n())
+
+# Plot frequency through time in 5 yr intervals, color by spp, all data
+barplot_by_spp.period5 <- count_by_period5_table %>% 
+  ggplot(aes(x=period5, y=count, fill=simplifiedName)) + 
+  geom_bar(stat = "identity") +
+  labs(y = "Number of Individuals") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+ggsave("all_barplot_by_spp.period5.pdf", barplot_by_spp.period5, width = 14, height = 7, units = "in")
+
+## Now I will break it down by focal region:
+
+#SoCA
+SoCA_count_by_per5.sp <- gbif_spec2 %>%
+  filter(stateProvince == "California" & county %in% c("San Diego", "Santa Barbara", "Orange", "Riverside", "Los Angeles", "Ventura", "San Bernardino", "San Luis Obispo")) %>%
+  group_by(period5, simplifiedName) %>%
+  summarise(count = n())
+
+# Plot frequency through time in 5 yr intervals, color by spp, all data
+SoCA_barplot_by_spp.period5 <- SoCA_count_by_per5.sp %>% 
+  ggplot(aes(x=period5, y=count, fill=simplifiedName)) + 
+  geom_bar(stat = "identity") +
+  labs(y = "Number of Individuals") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+ggsave("SoCA_barplot_by_spp.period5.pdf", SoCA_barplot_by_spp.period5, width = 14, height = 7, units = "in")
+
+# look at yearly instead of by period:
+SoCA_yrly_count_by_sp <- gbif_spec2 %>%
+  filter(stateProvince == "California" & county %in% c("San Diego", "Santa Barbara", "Orange", "Riverside", "Los Angeles", "Ventura", "San Bernardino", "San Luis Obispo")) %>%
+  group_by(year, simplifiedName) %>%
+  summarise(count = n())
+
+# Plot frequency through time in 5 yr intervals, color by spp, all data
+SoCA_yrly_barplot_by_spp <- SoCA_yrly_count_by_sp %>% 
+  ggplot(aes(x=year, y=count, fill=simplifiedName)) + 
+  geom_bar(stat = "identity") +
+  labs(y = "Number of Individuals") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+ggsave("SoCA_yrly_barplot_by_spp.pdf", SoCA_yrly_barplot_by_spp, width = 14, height = 7, units = "in")
+
+SoCA_1965 <- gbif_spec2 %>% filter(stateProvince == "California" & county %in% c("San Diego", "Santa Barbara", "Orange", "Riverside", "Los Angeles", "Ventura", "San Bernardino", "San Luis Obispo") & year =="1965") 
+
+# looking at crazy high collection count in soCal in 1965 in more detail
+ggmap(map) +
+  geom_point(data=SoCA_1965, size = 2, aes(x = decimalLongitude, y = decimalLatitude, shape = simplifiedName), color = "black") +
+  ylim(30, 35) +
+  xlim(-122, -115) +
+  scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
+  labs(title = "Raphanus specimen collection locations")
+
+```
+
+
+#Playing with some summary plots
+```{r}
+# Stacked Bar Plot - too much with all the counties, but will be helpful looking at chosen counties and shorter time intervals
+ggplot(California_count_by_per.co.sp, aes(x = period, y = count, fill = simplifiedName)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ county, scales = "free") +
+  labs(title = "Specimen Counts by Scientific Name for each County and Time Period",
+       x = "Time Period",
+       y = "Count of Specimens") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
 ```
 
 # CCH2 data only
@@ -294,7 +544,7 @@ occ_full <- read.csv("Raphanus_occurrences.csv", header = T)
 # pare down data: keep only reccords from CA, remove rows without a collection year, remove " County" and "Co." from county names so each county only has one name. 
 string_to_remove <- c(" County", " Co.")
 occ <- occ_full %>% 
-  select(id, scientificName, genus, specificEpithet, year, stateProvince, county, decimalLatitude, decimalLongitude) %>% 
+  select(id, simplifiedName, genus, specificEpithet, year, stateProvince, county, decimalLatitude, decimalLongitude) %>% 
   filter(stateProvince == "California") %>% 
   drop_na(year, county) %>% 
   mutate(county = str_remove_all(county, paste(string_to_remove, collapse = "|")))
@@ -368,7 +618,7 @@ string_to_remove <- c(" County", " Co.")
 
 cch <- cch_full %>%
 
-  select(scientificName, year, stateProvince, county, decimalLatitude, decimalLongitude, recordedBy, basisOfRecord) %>%
+  select(simplifiedName, year, stateProvince, county, decimalLatitude, decimalLongitude, recordedBy, basisOfRecord) %>%
 
 #  filter(stateProvince == "California") %>%
 
@@ -388,7 +638,7 @@ gbif_full <- read.csv("gbif_Raphanus_all_present.csv", header = T)
 
 gbif <- gbif_full %>%
 
-  select(scientificName, year, stateProvince, county, decimalLatitude, decimalLongitude, recordedBy, basisOfRecord) %>%
+  select(simplifiedName, year, stateProvince, county, decimalLatitude, decimalLongitude, recordedBy, basisOfRecord) %>%
 
   drop_na(year) %>%
 
