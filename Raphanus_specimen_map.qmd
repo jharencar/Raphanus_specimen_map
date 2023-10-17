@@ -34,8 +34,8 @@ Creating maps of *Raphanus* specimen locations and collection years.\
 # load libraries
 library(tidyverse)
 library(ggplot2)
-library(maps)
-library(ggmap)
+#library(maps)
+#library(ggmap)
 library(grid)
 library(patchwork)
 library(plotly)
@@ -47,7 +47,7 @@ library(htmlwidgets)
 
 # Citation: GBIF.org (20 July 2023) GBIF Occurrence Download https://doi.org/10.15468/dl.2srzch
 
-gbif_full <- read.csv("gbif_Raphanus_all_present.csv", header = T)
+gbif_full <- read.csv("Raphanus_occurrences.csv", header = T)
 
 # pare down gbif data:remove rows without a collection year, remove rows with no county AND no coordinates, remove " County" and "Co." from county names so each county only has one name.
 string_to_remove <- c(" County", " Co.")
@@ -70,6 +70,7 @@ gbif2 <- gbif %>%
 
 # get map
 # register_google(key = "AIzaSyB39SQ16tq5W05hnFRHx6CVSKzH1iq1Mf0")
+#ucsc key - AIzaSyBAl4FSPveUmJAh1g013R5mzesO7pux7g0
 map <- get_map(location = c(lon=-100 , lat= 40), zoom =3, maptype = "terrain")
 # ggmap(map) # for testing map
 
@@ -89,6 +90,7 @@ gbif_spec2 <- gbif_spec2 %>%
 ```
 ## Plot specimen collection locations
 ```{r plot all specimens}
+
 # plot all herbarium specimen locations on one map
 Raph_spec_map <- ggmap(map) +
   geom_point(data = gbif_spec2, size = 2, aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName), color = "black") +
@@ -170,6 +172,33 @@ gbif_2panel <- Raph_spec_sati_map/Raph_spec_raph_map
 
 ggsave("gbif_R.sativus_R.raphinastrum_specimens_map.pdf", gbif_2panel, width = 7, height = 9, units = "in")
 ```
+## California only specimen locations
+```{r}
+# Load map of CA (FIX BOX)
+map <- get_map(location = c(lon=-100 , lat= 40), zoom =3, maptype = "terrain")
+
+#PICK UP HERE: make 2 CA plots: pre 1940, 1940-1980, post 1980
+# code to MODIFY below
+
+# Plot only pre 1900 specimen locations
+gbif_spec_pre1900 <- gbif_spec2 %>% 
+  filter(year <= 1900)
+
+pre1900_Raph_spec_map <- ggmap(map) +
+  geom_point(data = gbif_spec_pre1900, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
+  ylim(25,50) +
+  xlim(-124, -65) +
+  scale_fill_distiller(palette = "Spectral") +
+  scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
+  labs(title = "1900 and older Raphanus specimen collection locations")
+
+# Plot 1900 to 1920 specimen locations
+gbif_spec_1900to1920 <- gbif_spec2 %>% 
+  filter(year <= 1920 & year >= 1900)
+
+```
+
+
 ## Plot and count by county
 ```{r plot by county}
 
