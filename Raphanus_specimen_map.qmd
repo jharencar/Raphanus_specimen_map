@@ -25,7 +25,7 @@ theme:
   dark: darkly
 ---
 
-## *Raphanus* specimen maps
+# Raphanus specimen maps
 
 Creating maps of *Raphanus* specimen locations and collection years.\
 \
@@ -34,14 +34,152 @@ Creating maps of *Raphanus* specimen locations and collection years.\
 # load libraries
 library(tidyverse)
 library(ggplot2)
-#library(maps)
-#library(ggmap)
+library(maps)
+library(ggmap)
 library(grid)
 library(patchwork)
 library(plotly)
 library(htmlwidgets)
+library(raster)
+library(sf)
+library(leaflet)
+library(RColorBrewer)
 ```
-# Reading in and cleaning data
+## Latest interactive plot of all CA specimens (09/2024)
+```{r}
+# import data
+CA_rad_spec <- read.csv("CCH2_all_2024.csv", header = T)
+
+## OLD code copied from below for reference:
+
+## Attempting to add climate data
+# Load the GeoTIFF file
+precip_raster <- raster("MAP.tif")
+#precip_raster_lowres <- aggregate(precip_raster, fact = 10)  # Downsample by a factor of 10
+
+# # Define the California bounding box (approximate values)
+# california_extent <- extent(-125, -113, 32, 42)  # xmin, xmax, ymin, ymax
+# 
+# # Crop the raster to California's extent
+# precip_raster_CA <- crop(precip_raster, california_extent)
+
+# Load the California shapefile
+california_shape <- st_read("./ca_state/CA_State.shp")
+
+# Reproject raster to match the CRS of the shapefile
+precip_raster_reproj <- projectRaster(precip_raster, crs = st_crs(california_shape)$proj4string)
+# Crop the raster using the California shapefile
+precip_raster_CA <- mask(crop(precip_raster_reproj, extent(california_shape)), california_shape)
+
+# assign coordinate system with right syntax (this is the system the raster is in)
+precip_raster_CA <- projectRaster(precip_raster_CA, crs = "+proj=longlat +datum=WGS84")
+
+# convert for leaflet
+leaflet::projectRasterForLeaflet(precip_raster_CA)
+
+# save CA only precip raster
+#writeRaster(precip_raster_CA, 'precip_raster_CA.tif')
+
+specimen_map_leaflet <- leaflet(CA_rad_spec) %>%
+  addTiles() %>%  # Add OpenStreetMap tiles
+  addRasterImage(precip_raster_CA,
+                 opacity = 0.7,  # Adjust opacity as needed
+                 colors = brewer.pal(9,'YlGnBu')) %>%  # Use Spectral color palette for raster
+  addCircleMarkers(
+    lat = ~decimalLatitude, 
+    lng = ~decimalLongitude, 
+    radius = 4,  # Size of the markers
+    color = ~colorNumeric("Spectral", year)(year),
+    stroke = FALSE, fillOpacity = 1,  # Set fill opacity to 1 for fully opaque markers
+    popup = ~paste("Scientific Name: ", specificEpithet, "<br>Year: ", year)  # Popup with info
+  ) %>%
+  setView(lng = -119.4179, lat = 36.7783, zoom = 6) %>%  # Set the view over California
+  addLegend(
+    position = "bottomright", 
+    pal = colorNumeric("Spectral", CA_rad_spec$year), 
+    values = ~year,
+    title = "Year",
+    opacity = 1
+  )
+
+saveWidget(specimen_map_leaflet, "interactive_CA_specimen_by_year_plot_w.precip.html")
+
+
+###OLD CODE below
+
+# # Convert the raster data to a data frame for use in Plotly
+# precip_data <- as.data.frame(precip_raster_CA, xy = TRUE, na.rm = TRUE)
+# colnames(precip_data) <- c("lon", "lat", "precip_value")
+# 
+# precip_map <- ggplot() + 
+#   geom_raster(aes(x = lon, y = lat, fill = precip_value), data = precip_data) +
+#   scale_fill_gradientn(colours = terrain.colors(10), na.value = "transparent") +
+#   scale_fill_viridis_c(direction = -1)+
+#   theme_void() +
+#   coord_quickmap()
+# 
+# precip_map_plotly <- ggplotly(precip_map)
+## BELOW works alone, but doesn't include climate background
+# # Use plotly to make the ggplot2 map interactive
+# CA_interactive_plot <- ggplotly(precip_map) %>%
+#   layout(
+#     mapbox = list(style = "open-street-map", zoom = 6, center = list(lat = 36.7783, lon = -119.4179)),
+#     title = "California Precipitation Gradient Map"
+#   )
+# Interactive plot
+# specimen_map_plotly <- 
+#   plot_ly(data = CA_rad_spec, 
+#           type = "scattermapbox", 
+#           mode = "markers", 
+#           hoverinfo = "text",
+#           lat = ~decimalLatitude, 
+#           lon = ~decimalLongitude,
+#           text = ~paste("Scientific Name: ", specificEpithet, "<br>Year: ", year),
+#           marker = list(size = 8, color = ~year, colorscale = "Spectral", cmin = min(CA_rad_spec$year), cmax = max(CA_rad_spec$year))) %>%
+#   layout(title = "Raphanus specimen collection locations",
+#          mapbox = list(style = "open-street-map", zoom = 6, center = list(lat = 36.7783, lon = -119.4179)),
+#          xaxis = list(showgrid = FALSE, zeroline = FALSE),
+#          yaxis = list(showgrid = FALSE, zeroline = FALSE))
+#   
+# # combine maps into one interactive map
+# combined_plot <- subplot(
+#   precip_map_plotly, 
+#   specimen_map_plotly, 
+#   nrows = 1, 
+#   shareX = TRUE, 
+#   shareY = TRUE
+# ) %>% layout(
+#   mapbox = list(style = "open-street-map", zoom = 6, center = list(lat = 36.7783, lon = -119.4179)),
+#   title = "Combined Precipitation and Specimen Collection Map"
+# )
+# 
+# # Render the combined interactive plot
+# combined_plot
+# 
+# # Display the interactive plot
+# CA_interactive_plot
+# 
+# # Save the interactive plot to share
+# saveWidget(combined_plot, "interactive_CA_specimen_by_year_plot_w.precip.html")
+
+# Attempt to add diff symbols for diff species... medium successful
+# First, need to convert simplifiedName to a factor with numeric values so it can be used to code different shapes
+gbif_spec2$symbol <- as.numeric(factor(gbif_spec2$simplifiedName))
+
+# Make the plot
+interactive_plot2 <- plot_geo(gbif_spec2, lat = ~decimalLatitude, lon = ~decimalLongitude, color = ~year, colors = "Spectral",
+                             symbol = ~symbol, symbols = c("circle", "cross", "triangle-up", "diamond"),
+                             marker = list(size = 8), mode = "markers") %>%
+  layout(title = "Raphanus specimen collection locations",
+         mapbox = list(style = "open-street-map", zoom = 4, center = list(lat = 37.5, lon = -95)))
+
+# Display the interactive plot
+#interactive_plot2
+
+```
+
+
+## Reading in and cleaning data for all of US
 ```{r import and clean data}
 # Read in gbif data; search for "Raphanus L.", occurance status present, with or without coordinates, and US only.
 
@@ -71,12 +209,12 @@ gbif2 <- gbif %>%
 # get map
 # register_google(key = "AIzaSyB39SQ16tq5W05hnFRHx6CVSKzH1iq1Mf0")
 #ucsc key - AIzaSyBAl4FSPveUmJAh1g013R5mzesO7pux7g0
-map <- get_map(location = c(lon=-100 , lat= 40), zoom =3, maptype = "terrain")
+#map <- get_map(location = c(lon=-100 , lat= 40), zoom =3, maptype = "terrain")
 # ggmap(map) # for testing map
 
 # Separate out only the herbarium specimen records
 gbif_spec2 <- gbif2 %>%
-filter(basisOfRecord == "PRESERVED_SPECIMEN")
+filter(basisOfRecord == "PreservedSpecimen")
 
 # simplify scientific name to make distinguishing sativus and raphanistrum possible
 # Create a new column with simplified names
@@ -175,26 +313,70 @@ ggsave("gbif_R.sativus_R.raphinastrum_specimens_map.pdf", gbif_2panel, width = 7
 ## California only specimen locations
 ```{r}
 # Load map of CA (FIX BOX)
-map <- get_map(location = c(lon=-100 , lat= 40), zoom =3, maptype = "terrain")
+map <- get_map(location = c(lon=-119 , lat= 37.5), zoom =6, maptype = "terrain")
 
 #PICK UP HERE: make 2 CA plots: pre 1940, 1940-1980, post 1980
 # code to MODIFY below
 
-# Plot only pre 1900 specimen locations
-gbif_spec_pre1900 <- gbif_spec2 %>% 
-  filter(year <= 1900)
+# Plot only pre 1940 specimen locations
+gbif_spec_pre1940 <- gbif_spec2 %>% 
+  filter(year <= 1940)
 
-pre1900_Raph_spec_map <- ggmap(map) +
-  geom_point(data = gbif_spec_pre1900, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
-  ylim(25,50) +
-  xlim(-124, -65) +
+Raph_spec_map_pre1940 <- ggmap(map) +
+  geom_point(data = gbif_spec_pre1940, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
+  ylim(32.8,41.7) +
+  xlim(-124.1, -114.5) +
   scale_fill_distiller(palette = "Spectral") +
-  scale_shape_manual(values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24, "Raphanus L." = 23)) +
-  labs(title = "1900 and older Raphanus specimen collection locations")
+  scale_shape_manual('Purported species', values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24), labels = c("weed", "crop")) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank()) +
+  guides(fill = guide_colourbar(reverse = TRUE))
 
-# Plot 1900 to 1920 specimen locations
-gbif_spec_1900to1920 <- gbif_spec2 %>% 
-  filter(year <= 1920 & year >= 1900)
+# Plot 1940-1980 specimen locations
+gbif_spec_1940to1980 <- gbif_spec2 %>% 
+  filter(year <= 1980 & year >= 1940)
+
+Raph_spec_map_1940to1980 <- ggmap(map) +
+  geom_point(data = gbif_spec_1940to1980, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
+  ylim(32.8,41.7) +
+  xlim(-124.1, -114.5) +
+  scale_fill_distiller(palette = "Spectral") +
+  scale_shape_manual('Purported species', values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24), labels = c("weed", "crop")) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank()) +
+  guides(fill = guide_colourbar(reverse = TRUE))
+
+# Plot post 1980 specimen locations
+gbif_spec_post1980 <- gbif_spec2 %>% 
+  filter(year >= 1980)
+
+Raph_spec_map_post1980 <- ggmap(map) +
+  geom_point(data = gbif_spec_post1980, size = 2, colour="black", aes(x = decimalLongitude, y = decimalLatitude, fill = year, shape = simplifiedName)) +
+  ylim(32.8,41.7) +
+  xlim(-124.1, -114.5) +
+  scale_fill_distiller(palette = "Spectral") +
+  scale_shape_manual('Purported species', values = c("Raphanus sativus" = 21, "Raphanus raphanistrum" = 24), labels = c("weed", "crop")) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank()) +
+  guides(fill = guide_colourbar(reverse = TRUE))
+
+# plot in a multipanel 
+three_panel_CA_Raph_map <- Raph_spec_map_pre1940 / Raph_spec_map_1940to1980 / Raph_spec_map_post1980
+
+# save plot
+ggsave("three_panel_CA_Raph_map.pdf", three_panel_CA_Raph_map, width = 4.5, height = 12, units = "in")
 
 ```
 
