@@ -34,6 +34,8 @@ Creating maps of *Raphanus* specimen locations and collection years.\
 # load libraries
 library(tidyverse)
 library(ggplot2)
+theme_set(theme_bw())
+library(ggbiplot)
 library(maps)
 library(ggmap)
 library(grid)
@@ -44,7 +46,119 @@ library(raster)
 library(sf)
 library(leaflet)
 library(RColorBrewer)
+
+library(ade4) # PCA computation
 ```
+## Climate PCA
+Plotting post-2000 specimens on climate PCA to get understanding of climatic distribution 
+```{r}
+
+## PICKUP - now that one is working, import and combine all climate data at once
+# - check coordinate systems and convert (?) all to WGS84
+# see about data by year/think about automating import of year (and Month?? figure out if collection year is right year to associate, maybe it is previous year... depends on what month starts observation year) specific climate data for 
+
+# import data
+CA_rad_spec <- read.csv("CCH2_all_2024.csv", header = T)
+post_2000 <- CA_rad_spec %>% dplyr::select(specificEpithet, year, decimalLatitude, decimalLongitude, county) %>% filter(year >= 2000)
+
+# order by longitude
+post_2000 <- post_2000 %>% arrange(desc(decimalLatitude))
+
+# import climate data:
+# DD5 = growing degree-days
+# MAP = mean annual precip
+# MAT = mean annual temp
+# MCMT = mean coldest month temperature (°C)
+# MWMT = mean warmest month temperature (°C)
+# SHM = summer heat-moisture index ((MWMT)/(MSP/1000))
+tiff_files <- list.files(path=".", pattern = "*.tif")
+rasters <- lapply(tiff_files, raster::raster)
+
+# precip_raster <- raster::raster("MAP.tif")
+
+# Check the projection 
+#crs(precip_raster) # '+proj=longlat +datum=WGS84 +no_defs"
+
+## extract data just for specific coordinates
+
+# get coordinates
+coordinates <- post_2000 %>% dplyr::select(decimalLongitude,decimalLatitude)
+names(coordinates) <- c("longitude", "latitude")
+
+# Define empty data frame to store results
+climate_compiled <- data.frame(longitude = coordinates[,1], latitude = coordinates[,2])
+
+# Loop through each raster and extract data
+for (i in 1:length(rasters)) {
+  current_raster <- rasters[[i]]
+  current_data <- extract(current_raster, SpatialPoints(coordinates, proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs ")), sp = T)
+  current_df <- as.data.frame(current_data)
+  # Add new column with data from current raster
+  climate_compiled[, paste0("raster_", i)] <- current_df[,1]
+}
+
+names(climate_compiled) <- c("longitude", "latitude", "DD5", "MAP", "MAT", "MCMT", "MWMT", "SHM")
+
+# generate Climate PCA 
+# # add identifier for each specimen 
+# climate_compiled <- climate_compiled %>%
+#   mutate(specimen_no = row_number())
+
+# remove coordinates
+climate_data <- climate_compiled[, -c(1, 2)]
+
+# calculate principal components
+clim_pca <- prcomp(climate_data, center = TRUE, scale = TRUE)
+
+# # reverse signs (eigenvectors in R point in negative direction by default)
+# clim_pca$rotation <- -1*clim_pca$rotation
+# clim_pca$x <- -1*clim_pca$x
+
+# display principal components
+clim_pca$rotation
+
+# Basic biplot
+biplot(clim_pca, scale = 0)
+
+# extract PCA scores for plotting
+pca_scores <- as.data.frame(clim_pca$x)
+
+# add location column
+pca_scores <- bind_cols(post_2000 %>% dplyr::select(county), pca_scores)
+
+# Calculate the variance explained by each principal component
+per_variance_explained <- (clim_pca$sdev^2 / sum(clim_pca$sdev^2))*100
+# Create a data frame for the variance explained
+variance_df <- data.frame(
+  PC = paste0("PC", 1:length(per_variance_explained)),
+  Variance_Explained = per_variance_explained,
+  Cumulative_Variance = cumsum(per_variance_explained)
+)
+
+## plot with ggplot
+# # create PC loading vectors for plot
+# loadings <- clim_pca$rotation
+# # calculate arrow coordinates
+# start_x <- rep(0, ncol(loadings))
+# start_y <- rep(0, ncol(loadings))
+# end_x <- loadings[, 1] * max(abs(clim_pca$x[, 1]))
+# end_y <- loadings[, 2] * max(abs(clim_pca$x[, 2]))
+
+## plot no loadings
+ggplot(pca_scores, aes(x=PC1, y=PC2, colour = county)) +
+  geom_point() +
+  labs(title = "PCA of Climate Variables", x = "PC1 (66.6%)", y = "PC2 (24.5%)")
+  
+ggsave("Climate_PCA.png", width = 20, height = 10, units = "cm")
+
+## biplot
+biplot(clim_pca, cex = c(0.5,1), ylim = c(-0.1,0.105))
+ggbiplot(clim_pca)
+ggsave("Climate_biplot.png", width = 15, height = 15, units = "cm")
+```
+
+
+
 ## Latest interactive plot of all CA specimens (09/2024)
 ```{r}
 # import data
@@ -674,14 +788,21 @@ write.csv(SE_count_by_per.co.sp, file = "SE_specimen_count_by_per.co.sp.csv", ro
 gbif_spec2 <- gbif_spec2 %>%
   mutate(period5 = paste0(floor(year / 5) * 5, "-", floor(year / 5) * 5 + 4))
 
+CA_rad_spec <- CA_rad_spec  %>%
+  mutate(period5 = paste0(floor(year / 5) * 5, "-", floor(year / 5) * 5 + 4))
+
 # Count the number of rows for each 5-year period
 count_by_period5_table <- gbif_spec2 %>%
   group_by(period5, simplifiedName) %>%
   summarise(count = n())
 
+count_by_period5_table <- CA_rad_spec %>%
+  group_by(period5, specificEpithet) %>%
+  summarise(count = n())
+
 # Plot frequency through time in 5 yr intervals, color by spp, all data
 barplot_by_spp.period5 <- count_by_period5_table %>% 
-  ggplot(aes(x=period5, y=count, fill=simplifiedName)) + 
+  ggplot(aes(x=period5, y=count, fill=specificEpithet)) + 
   geom_bar(stat = "identity") +
   labs(y = "Number of Individuals") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
