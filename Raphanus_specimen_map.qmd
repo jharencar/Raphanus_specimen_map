@@ -45,24 +45,99 @@ library(htmlwidgets)
 library(raster)
 library(sf)
 library(leaflet)
+library(leaflet.extras)
 library(RColorBrewer)
 
 library(ade4) # PCA computation
+
+setwd("/Users/juliaharencar/Documents/Github/Raphanus_specimen_map")
 ```
+
+## Specimen list building
+```{r}
+# import full dataset and list of specimen IDs selected based on map and age
+CA_rad_spec <- read.csv("Raphanus_specimens_all_2024.csv", header = T)
+samp_list <- read.csv("Raphanus_specimen_sampling_incomp.csv", header = T)
+
+# Extract the IDs from the list of specimens to sample
+selected <- samp_list$id
+
+# Subset the complete dataframe based on the IDs
+samp_list_w.data <- CA_rad_spec %>%
+  filter(id %in% selected)
+
+# print new sampling list with all metadata
+library(writexl)
+write_xlsx(samp_list_w.data, "Raphanus_sampling_specimens.xlsx")
+# new map colored by year to check sample distribution/make sure I didn't miss anything key 
+# NOTE: might need to run some of below lines for mapping stuff
+colors <- colorNumeric("Spectral", domain = CA_rad_spec$year)
+full_specimen_map_w_sampling <- leaflet(CA_rad_spec) %>%
+  addTiles() %>%  # Add OpenStreetMap tiles
+  # addRasterImage(precip_raster_CA,
+  #                opacity = 0.7,  # Adjust opacity as needed
+  #                colors = brewer.pal(9,'YlGnBu')) %>%  # Use Spectral color palette for raster
+  addCircleMarkers(
+    lat = ~decimalLatitude, 
+    lng = ~decimalLongitude, 
+    radius = 4,  # Size of the markers
+    color = ~colors(year),
+    stroke = FALSE, fillOpacity = 1,  # Set fill opacity to 1 for fully opaque markers
+    popup = ~paste("Scientific Name: ", specificEpithet, "<br>Year: ", year, "Herbarium:", institutionCode, "ID:", id),  # Popup with info
+    label = ~paste(specificEpithet, institutionCode, year),  # Add data as labels for searching
+    group = "allPoints"
+  ) %>%
+  # Add selected points with a dark border
+  addCircleMarkers(
+    data = CA_rad_spec[CA_rad_spec$id %in% selected, ],
+    lat = ~decimalLatitude, 
+    lng = ~decimalLongitude, 
+    radius = 4,  # Same size as the other points
+    color = "black",  # Border color
+    stroke = TRUE, weight = 3,  # Enable stroke and set border thickness
+    fillColor = ~colors(year),  # Keep the fill color the same
+    fillOpacity = 1,  # Fully opaque fill
+    popup = ~paste("Scientific Name: ", specificEpithet, "<br>Year: ", year, "Herbarium:", institutionCode, "ID:", id),  # Popup with info
+    label = ~paste(specificEpithet, institutionCode, year),  # Add id as a label for searching
+    group = "selectedPoints"  # Separate group for selected points
+  ) %>%
+  setView(lng = -119.4179, lat = 36.7783, zoom = 6) %>%  # Set the view over California
+  addLegend(
+    position = "bottomright", 
+    pal = colorNumeric("Spectral", CA_rad_spec$year), 
+    values = ~year,
+    title = "Year",
+    opacity = 1
+  ) %>%
+  # Add a search bar to find points by ID
+  addSearchFeatures(
+    targetGroups = "allPoints",  # Search within all markers
+    options = searchFeaturesOptions(
+      zoom = 10,  # Zoom level when a match is found
+      openPopup = TRUE,  # Open the popup of the matching point
+      textPlaceholder = "Search map..."  # Placeholder text in the search bar
+ )
+  )
+
+saveWidget(full_specimen_map_w_sampling, "bold_selected_CA_specimen_color_by_PC1_post_2000_new.html")
+
+```
+
 ## Climate PCA
 Plotting post-2000 specimens on climate PCA to get understanding of climatic distribution 
 ```{r}
 
-## PICKUP - now that one is working, import and combine all climate data at once
-# - check coordinate systems and convert (?) all to WGS84
+## PICKUP
 # see about data by year/think about automating import of year (and Month?? figure out if collection year is right year to associate, maybe it is previous year... depends on what month starts observation year) specific climate data for 
 
 # import data
 CA_rad_spec <- read.csv("CCH2_all_2024.csv", header = T)
-post_2000 <- CA_rad_spec %>% dplyr::select(specificEpithet, year, decimalLatitude, decimalLongitude, county) %>% filter(year >= 2000)
+post_2000 <- CA_rad_spec %>% dplyr::select(specificEpithet, year, decimalLatitude, decimalLongitude, county, institutionCode, id) %>% filter(year >= 2000)
+# s2015_e2019 <- CA_rad_spec %>% dplyr::select(specificEpithet, year, decimalLatitude, decimalLongitude, county) %>% filter(year >= 2015 & year <= 2019)
 
 # order by longitude
 post_2000 <- post_2000 %>% arrange(desc(decimalLatitude))
+# s2015_e2019 <- s2015_e2019 %>% arrange(desc(decimalLatitude))
 
 # import climate data:
 # DD5 = growing degree-days
@@ -83,6 +158,7 @@ rasters <- lapply(tiff_files, raster::raster)
 
 # get coordinates
 coordinates <- post_2000 %>% dplyr::select(decimalLongitude,decimalLatitude)
+# coordinates <- s2015_e2019 %>% dplyr::select(decimalLongitude,decimalLatitude)
 names(coordinates) <- c("longitude", "latitude")
 
 # Define empty data frame to store results
@@ -123,9 +199,10 @@ biplot(clim_pca, scale = 0)
 # extract PCA scores for plotting
 pca_scores <- as.data.frame(clim_pca$x)
 
-# add location column
-pca_scores <- bind_cols(post_2000 %>% dplyr::select(county), pca_scores)
-
+# add location info
+#pca_scores <- bind_cols(post_2000 %>% dplyr::select(county), pca_scores)
+pca_scores_post_2000 <- bind_cols(post_2000 %>% dplyr::select(specificEpithet, year, decimalLatitude, decimalLongitude, county, institutionCode, id), pca_scores)
+                        
 # Calculate the variance explained by each principal component
 per_variance_explained <- (clim_pca$sdev^2 / sum(clim_pca$sdev^2))*100
 # Create a data frame for the variance explained
@@ -145,37 +222,30 @@ variance_df <- data.frame(
 # end_y <- loadings[, 2] * max(abs(clim_pca$x[, 2]))
 
 ## plot no loadings
+# ggplot(pca_scores, aes(x=PC1, y=PC2, colour = county)) +
+#   geom_point() +
+#   labs(title = "Post 2000 specimens", x = "PC1 (66.6%)", y = "PC2 (24.5%)")
 ggplot(pca_scores, aes(x=PC1, y=PC2, colour = county)) +
   geom_point() +
-  labs(title = "PCA of Climate Variables", x = "PC1 (66.6%)", y = "PC2 (24.5%)")
+  labs(title = "Specimens from 2015-2019", x = "PC1 (72.6%)", y = "PC2 (17.6%)")
   
-ggsave("Climate_PCA.png", width = 20, height = 10, units = "cm")
+ggsave("Climate_PCA_2015-2019.png", width = 20, height = 10, units = "cm")
 
 ## biplot
-biplot(clim_pca, cex = c(0.5,1), ylim = c(-0.1,0.105))
+biplot(clim_pca, cex = c(0.5,1))
 ggbiplot(clim_pca)
-ggsave("Climate_biplot.png", width = 15, height = 15, units = "cm")
+ggsave("Climate_biplot_2015-2019.png", width = 15, height = 15, units = "cm")
 ```
 
-
-
-## Latest interactive plot of all CA specimens (09/2024)
+## Interactive plot color by PC1 from above to understand climate distribution
 ```{r}
 # import data
-CA_rad_spec <- read.csv("CCH2_all_2024.csv", header = T)
+#CA_rad_spec <- read.csv("CCH2_all_2024.csv", header = T)
 
-## OLD code copied from below for reference:
+#CA_rad_spec_2015_2024 <- CA_rad_spec %>% filter(year >= 2015 & year <= 2024)
 
-## Attempting to add climate data
 # Load the GeoTIFF file
 precip_raster <- raster("MAP.tif")
-#precip_raster_lowres <- aggregate(precip_raster, fact = 10)  # Downsample by a factor of 10
-
-# # Define the California bounding box (approximate values)
-# california_extent <- extent(-125, -113, 32, 42)  # xmin, xmax, ymin, ymax
-# 
-# # Crop the raster to California's extent
-# precip_raster_CA <- crop(precip_raster, california_extent)
 
 # Load the California shapefile
 california_shape <- st_read("./ca_state/CA_State.shp")
@@ -188,24 +258,129 @@ precip_raster_CA <- mask(crop(precip_raster_reproj, extent(california_shape)), c
 # assign coordinate system with right syntax (this is the system the raster is in)
 precip_raster_CA <- projectRaster(precip_raster_CA, crs = "+proj=longlat +datum=WGS84")
 
+# not working and apparently not needed
 # convert for leaflet
-leaflet::projectRasterForLeaflet(precip_raster_CA)
+#leaflet::projectRasterForLeaflet(precip_raster_CA)
 
-# save CA only precip raster
-#writeRaster(precip_raster_CA, 'precip_raster_CA.tif')
+# Create a custom reversed palette function
+reversed_spectral <- function(n) {
+  original_palette <- brewer.pal(n, "Spectral")
+  rev(original_palette)
+}
+
+reversed_PuOr <- function(n) {
+  original_palette <- brewer.pal(n, "PuOr")
+  rev(original_palette)
+}
+
+custom_palette <- colorRampPalette(c("#2166AC", "#4393C3", "#92C5DE", "#F4A582", "#D6604D", "#B2182B"))
+
+pal <- colorNumeric(palette = custom_palette(100), domain = pca_scores_post_2000$PC1)
+
+specimen_map_leaflet <- leaflet(pca_scores_post_2000 ) %>%
+  addTiles() %>%  # Add OpenStreetMap tiles
+  addCircleMarkers(
+    lat = ~decimalLatitude, 
+    lng = ~decimalLongitude, 
+    radius = 7,  # Size of the markers
+    color = ~pal(PC1),
+    stroke = FALSE, fillOpacity = 1,  # Set fill opacity to 1 for fully opaque markers
+    popup = ~paste("Scientific Name: ", specificEpithet, "<br>Year: ", year, "Herbarium:", institutionCode, "ID:", id),  # Popup with info
+    label = ~paste(specificEpithet, institutionCode, id),  # add id as a label for searching
+    group = "allPoints"       # Assign a generic group name
+  ) %>%
+  setView(lng = -119.4179, lat = 36.7783, zoom = 6) %>%  # Set the view over California
+  addLegend(
+    position = "bottomright", 
+    pal = colorNumeric(reversed_spectral(9), CA_rad_spec$PC1), 
+    values = ~PC1,
+    title = "PC1",
+    opacity = 1
+  ) %>%
+  # Add a search bar to find points by ID
+  addSearchFeatures(
+    targetGroups = "allPoints",  # Search within all markers
+    options = searchFeaturesOptions(
+      zoom = 10,  # Zoom level when a match is found
+      openPopup = TRUE,  # Open the popup of the matching point
+      textPlaceholder = "Search map..."  # Placeholder text in the search bar
+    )
+  )
+
+saveWidget(specimen_map_leaflet, "interactive_CA_specimen_color_by_PC1_post_2000.html")
+```
+### Specimens to sample on climate PCA colored post 2000 map
+```{r}
+sampling <- read.csv("Raphanus_sampling_specimens.csv", header = T) 
+selected <- sampling$id
+
+specimen_map_w_sampling <- leaflet(pca_scores_post_2000) %>%
+  addTiles() %>%  # Add OpenStreetMap tiles
+  # Add all points
+  addCircleMarkers(
+    lat = ~decimalLatitude, 
+    lng = ~decimalLongitude, 
+    radius = 7,  # Size of the markers
+    color = ~pal(PC1),
+    stroke = FALSE, fillOpacity = 1,  # Set fill opacity to 1 for fully opaque markers
+    popup = ~paste("Scientific Name: ", specificEpithet, "<br>Year: ", year, "Herbarium:", institutionCode, "ID:", id),  # Popup with info
+    label = ~paste(specificEpithet, institutionCode, id),  # Add id as a label for searching
+    group = "allPoints"       # Assign a generic group name
+  ) %>%
+  # Add selected points with a dark border
+  addCircleMarkers(
+    data = pca_scores_post_2000[pca_scores_post_2000$id %in% selected, ],
+    lat = ~decimalLatitude, 
+    lng = ~decimalLongitude, 
+    radius = 7,  # Same size as the other points
+    color = "black",  # Border color
+    stroke = TRUE, weight = 3,  # Enable stroke and set border thickness
+    fillColor = ~pal(PC1),  # Keep the fill color the same
+    fillOpacity = 1,  # Fully opaque fill
+    popup = ~paste("Scientific Name: ", specificEpithet, "<br>Year: ", year, "Herbarium:", institutionCode, "ID:", id),  # Popup with info
+    label = ~paste(specificEpithet, institutionCode, id),  # Add id as a label for searching
+    group = "selectedPoints"  # Separate group for selected points
+  ) %>%
+  setView(lng = -119.4179, lat = 36.7783, zoom = 6) %>%  # Set the view over California
+  addLegend(
+    position = "bottomright", 
+    pal = colorNumeric(reversed_spectral(9), CA_rad_spec$PC1), 
+    values = ~PC1,
+    title = "PC1",
+    opacity = 1
+  ) %>%
+  # Add a search bar to find points by ID
+  addSearchFeatures(
+    targetGroups = "allPoints",  # Search within all markers
+    options = searchFeaturesOptions(
+      zoom = 10,  # Zoom level when a match is found
+      openPopup = TRUE,  # Open the popup of the matching point
+      textPlaceholder = "Search map..."  # Placeholder text in the search bar
+    )
+  )
+
+saveWidget(specimen_map_w_sampling, "bold_selected_CA_specimen_color_by_PC1_post_2000.html")
+
+```
+
+## Latest interactive plot of all CA specimens (09/2024)
+```{r}
+# import data
+CA_rad_spec <- read.csv("CCH2_all_2024.csv", header = T)
 
 specimen_map_leaflet <- leaflet(CA_rad_spec) %>%
   addTiles() %>%  # Add OpenStreetMap tiles
-  addRasterImage(precip_raster_CA,
-                 opacity = 0.7,  # Adjust opacity as needed
-                 colors = brewer.pal(9,'YlGnBu')) %>%  # Use Spectral color palette for raster
+  # addRasterImage(precip_raster_CA,
+  #                opacity = 0.7,  # Adjust opacity as needed
+  #                colors = brewer.pal(9,'YlGnBu')) %>%  # Use Spectral color palette for raster
   addCircleMarkers(
     lat = ~decimalLatitude, 
     lng = ~decimalLongitude, 
     radius = 4,  # Size of the markers
     color = ~colorNumeric("Spectral", year)(year),
     stroke = FALSE, fillOpacity = 1,  # Set fill opacity to 1 for fully opaque markers
-    popup = ~paste("Scientific Name: ", specificEpithet, "<br>Year: ", year)  # Popup with info
+    popup = ~paste("Scientific Name: ", specificEpithet, "<br>Year: ", year, "Herbarium:", institutionCode)  # Popup with info
+    label = ~paste(specificEpithet, institutionCode, id),  # add id as a label for searching
   ) %>%
   setView(lng = -119.4179, lat = 36.7783, zoom = 6) %>%  # Set the view over California
   addLegend(
@@ -216,7 +391,7 @@ specimen_map_leaflet <- leaflet(CA_rad_spec) %>%
     opacity = 1
   )
 
-saveWidget(specimen_map_leaflet, "interactive_CA_specimen_by_year_plot_w.precip.html")
+saveWidget(specimen_map_leaflet, "interactive_CA_specimen_by_year_all_CCH2.html")
 
 
 ###OLD CODE below
@@ -292,14 +467,70 @@ interactive_plot2 <- plot_geo(gbif_spec2, lat = ~decimalLatitude, lon = ~decimal
 
 ```
 
+### Specimens to sample on map of all specimens
+```{r}
+sampling <- read.csv("Raphanus_sampling_specimens.csv", header = T) 
+selected <- sampling$id
+# adding bold borders to those I will sample
+# Define a consistent color palette based on the full range of 'year'
+colors <- colorNumeric("Spectral", domain = CA_rad_spec$year)
+
+full_specimen_map_w_sampling <- leaflet(CA_rad_spec) %>%
+  addTiles() %>%  # Add OpenStreetMap tiles
+  # addRasterImage(precip_raster_CA,
+  #                opacity = 0.7,  # Adjust opacity as needed
+  #                colors = brewer.pal(9,'YlGnBu')) %>%  # Use Spectral color palette for raster
+  addCircleMarkers(
+    lat = ~decimalLatitude, 
+    lng = ~decimalLongitude, 
+    radius = 4,  # Size of the markers
+    color = ~colors(year),
+    stroke = FALSE, fillOpacity = 1,  # Set fill opacity to 1 for fully opaque markers
+    popup = ~paste("Scientific Name: ", specificEpithet, "<br>Year: ", year, "Herbarium:", institutionCode, "ID:", id),  # Popup with info
+    label = ~paste(specificEpithet, institutionCode, year),  # Add data as labels for searching
+    group = "allPoints"
+  ) %>%
+  # Add selected points with a dark border
+  addCircleMarkers(
+    data = CA_rad_spec[CA_rad_spec$id %in% selected, ],
+    lat = ~decimalLatitude, 
+    lng = ~decimalLongitude, 
+    radius = 4,  # Same size as the other points
+    color = "black",  # Border color
+    stroke = TRUE, weight = 3,  # Enable stroke and set border thickness
+    fillColor = ~colors(year),  # Keep the fill color the same
+    fillOpacity = 1,  # Fully opaque fill
+    popup = ~paste("Scientific Name: ", specificEpithet, "<br>Year: ", year, "Herbarium:", institutionCode, "ID:", id),  # Popup with info
+    label = ~paste(specificEpithet, institutionCode, year),  # Add id as a label for searching
+    group = "selectedPoints"  # Separate group for selected points
+  ) %>%
+  setView(lng = -119.4179, lat = 36.7783, zoom = 6) %>%  # Set the view over California
+  addLegend(
+    position = "bottomright", 
+    pal = colorNumeric("Spectral", CA_rad_spec$year), 
+    values = ~year,
+    title = "Year",
+    opacity = 1
+  ) %>%
+  # Add a search bar to find points by ID
+  addSearchFeatures(
+    targetGroups = "allPoints",  # Search within all markers
+    options = searchFeaturesOptions(
+      zoom = 10,  # Zoom level when a match is found
+      openPopup = TRUE,  # Open the popup of the matching point
+      textPlaceholder = "Search map..."  # Placeholder text in the search bar
+ )
+  )
+
+saveWidget(full_specimen_map_w_sampling , "bold_selected_CA_specimen_by_year_all_CCH2.html")
+```
 
 ## Reading in and cleaning data for all of US
 ```{r import and clean data}
 # Read in gbif data; search for "Raphanus L.", occurance status present, with or without coordinates, and US only.
 
 # Citation: GBIF.org (20 July 2023) GBIF Occurrence Download https://doi.org/10.15468/dl.2srzch
-
-gbif_full <- read.csv("Raphanus_occurrences.csv", header = T)
+#OLD -> #gbif_full <- read.csv("Raphanus_occurrences.csv", header = T)
 
 # pare down gbif data:remove rows without a collection year, remove rows with no county AND no coordinates, remove " County" and "Co." from county names so each county only has one name.
 string_to_remove <- c(" County", " Co.")
@@ -356,13 +587,13 @@ Raph_spec_map <- ggmap(map) +
 
 # Try making an interactive plot
 interactive_plot <- 
-  plot_ly(data = gbif_spec2, 
+  plot_ly(data = CA_rad_spec, 
           type = "scattermapbox", 
           mode = "markers", 
           hoverinfo = "text",
           lat = ~decimalLatitude, 
           lon = ~decimalLongitude,
-          text = ~paste("Scientific Name: ", simplifiedName, "<br>Year: ", year),
+          text = ~paste("Scientific Name: ", simplifiedName, "<br>Year: ", year, "Herbarium:", institutionCode),
           marker = list(size = 8, color = ~year, colorscale = "Spectral", cmin = min(gbif_spec2$year), cmax = max(gbif_spec2$year))) %>%
   layout(title = "Raphanus specimen collection locations",
          mapbox = list(style = "open-street-map", zoom = 4, center = list(lat = 37.5, lon = -95)),
