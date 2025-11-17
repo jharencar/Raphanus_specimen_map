@@ -1,0 +1,108 @@
+---
+title: "Specimen_data_management"
+author: "Julia Harenčár"
+date: "07/05/2023"
+execute:
+  echo: true #will keep code chunks
+  warning: false #removes warning functions
+format: 
+  html: 
+    self-contained: true #makes one html file to render that is sharable
+    page-layout: full #uses the full page
+    code-fold: true #lets user fold up codes
+    code-tools: true #makes an option in the upper left for users to reveal/hide all code and copy source code
+    #makes long lines of code rap
+    code-overflow: wrap
+    #makes table of contents
+    toc: true
+    #sets location of table of contents
+    toc-location: left
+#set theme settings. in this case user can switch between light and dark mode
+theme:
+  #give light option
+  light: flatly
+  #give dark option
+  dark: darkly
+---
+
+# Raphanus specimen data management
+
+Managing data for *Raphanus* specimens.
+
+```{r load libraries}
+# load libraries
+library(tidyverse)
+library(ggplot2)
+theme_set(theme_bw())
+
+setwd("/Users/juliaharencar/Documents/Github/Raphanus_specimen_map")
+```
+
+### missing coordinates
+```{r missing coords}
+# import full dataset and list of sampled specimens
+CA_rad_spec <- read.csv("Raphanus_specimens_all_2025.csv", header = T)
+samp_list <- read.csv("Herbarium_tissue_collected_tmp_251114.csv", header = T)
+
+# add specimen location gps coordinates from Natalie and Juliette's hand curation
+Nat_coords<- read.csv("/Users/juliaharencar/Documents/Github/Raphanus_Phenology/Output_Files/completed_specimen_data.csv", header = T)
+more_coords <- read.csv("CA_rad_spec_1915to40_missing.coords.csv", header = T)
+more_coords$decimalLatitude <- as.numeric(more_coords$decimalLatitude)
+yet_more <- read.csv("CA_rad_spec_sampled.to.251114_missing.coords_w_some_filled.csv", header = T)
+yet_more$decimalLatitude <- as.numeric(yet_more$decimalLatitude)
+
+CA_rad_spec <- CA_rad_spec %>%
+  rows_update(
+    Nat_coords %>% dplyr::select(id, decimalLatitude, decimalLongitude),
+    by = "id",
+    unmatched = "ignore"
+  ) %>% 
+  rows_update(
+    more_coords %>% dplyr::select(id, decimalLatitude, decimalLongitude),
+    by = "id",
+    unmatched = "ignore"
+  ) %>% 
+  rows_update(
+    yet_more %>% dplyr::select(id, decimalLatitude, decimalLongitude),
+    by = "id",
+    unmatched = "ignore"
+  )
+
+# clean up county names
+CA_rad_spec$county <- gsub("\\s*[Cc]ounty\\s*$", "", CA_rad_spec$county) # remove "county"
+CA_rad_spec$county <- trimws(CA_rad_spec$county) # trim whitespace
+
+# Extract the IDs from the list of sampled specimens
+selected <- samp_list$id
+
+# save list with data of sampled specimens
+sampled.data <- CA_rad_spec %>%
+  filter(id %in% selected)
+write.csv(sampled.data, file = "CA_rad_spec_sampled.to.251114_all.csv", row.names = FALSE)
+
+# make a separate spreadsheet for each of the three focal regions to clean later:
+# filter for only so cal counties: filter to only include 
+sampled_so_cal <- CA_rad_spec$county %>% filter(county %in% c("Ventura","Los Angeles","San Bernardino","Orange","Riverside","San Diego"))
+                                       
+                                       
+
+# get sampled specimens without GPS data:
+sampled.missing.coords <- CA_rad_spec %>%
+  filter(id %in% selected) %>% 
+  filter(is.na(decimalLatitude))
+
+# save df of samps without coords to get location data
+write.csv(sampled.missing.coords, file = "CA_rad_spec_sampled.to.251114_missing.coords.csv", row.names = FALSE)
+
+# make df of only sampled specimens
+samp_list_w.data <- CA_rad_spec %>%
+  filter(id %in% selected)
+
+# histogram: distribution of years 
+ggplot(samp_list_w.data, aes(x = year)) +
+  geom_histogram(binwidth = 5, col = "black", fill = "darkolivegreen3") +
+  scale_x_continuous(breaks = round(seq(1850, max(samp_list_w.data$year), by = 5), 1)) +
+  scale_y_continuous(breaks = seq(5, 70, by = 5)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+```
+

@@ -35,12 +35,11 @@ Creating maps of *Raphanus* specimen locations and collection years.\
 library(tidyverse)
 library(ggplot2)
 theme_set(theme_bw())
-library(ggbiplot)
 library(maps)
 library(ggmap)
 library(grid)
 library(patchwork)
-library(plotly)
+#library(plotly)
 library(htmlwidgets)
 library(raster)
 library(sf)
@@ -53,11 +52,21 @@ library(ade4) # PCA computation
 setwd("/Users/juliaharencar/Documents/Github/Raphanus_specimen_map")
 ```
 
-## Specimen list building
+### Specimen list building
+
 ```{r}
 # import full dataset and list of specimen IDs selected based on map and age
 CA_rad_spec <- read.csv("Raphanus_specimens_all_2024.csv", header = T)
 samp_list <- read.csv("Raphanus_specimen_sampling_incomp.csv", header = T)
+
+# add specimen location gps coordinates from Ntalie's hand curation
+fulldata<- read.csv("/Users/juliaharencar/Documents/Github/Raphanus_Phenology/Output_Files/completed_specimen_data.csv", header = T)
+CA_rad_spec <- CA_rad_spec %>%
+  rows_update(
+    fulldata %>% dplyr::select(id, specificEpithet, institutionCode, decimalLatitude, decimalLongitude, year),
+    by = "id",
+    unmatched = "ignore"
+  )
 
 # Extract the IDs from the list of specimens to sample
 selected <- samp_list$id
@@ -69,9 +78,28 @@ samp_list_w.data <- CA_rad_spec %>%
 # print new sampling list with all metadata
 library(writexl)
 write_xlsx(samp_list_w.data, "Raphanus_sampling_specimens.xlsx")
+
+# quick histogram distibution of years
+hist(samp_list_w.data$year, breaks=60)
+
+ggplot(samp_list_w.data, aes(x=year)) +
+  geom_histogram(col = "black", fill = "darkolivegreen3") +
+  scale_x_continuous(breaks = round(seq(1850, max(samp_list_w.data$year), by = 10),1)) +
+  scale_y_continuous(breaks = seq(10,70, by=10))
+
+#   geom_point() +
+#   labs(title = "Pos
+```
+
+### newest map with sampling
+
+```{r}
 # new map colored by year to check sample distribution/make sure I didn't miss anything key 
 # NOTE: might need to run some of below lines for mapping stuff
 colors <- colorNumeric("Spectral", domain = CA_rad_spec$year)
+
+CA_rad_spec <- CA_rad_spec %>% filter(institutionCode=="DAV")
+
 full_specimen_map_w_sampling <- leaflet(CA_rad_spec) %>%
   addTiles() %>%  # Add OpenStreetMap tiles
   # addRasterImage(precip_raster_CA,
@@ -84,7 +112,7 @@ full_specimen_map_w_sampling <- leaflet(CA_rad_spec) %>%
     color = ~colors(year),
     stroke = FALSE, fillOpacity = 1,  # Set fill opacity to 1 for fully opaque markers
     popup = ~paste("Scientific Name: ", specificEpithet, "<br>Year: ", year, "Herbarium:", institutionCode, "ID:", id),  # Popup with info
-    label = ~paste(specificEpithet, institutionCode, year),  # Add data as labels for searching
+    label = ~paste(specificEpithet, institutionCode, year, id),  # Add data as labels for searching
     group = "allPoints"
   ) %>%
   # Add selected points with a dark border
@@ -98,7 +126,7 @@ full_specimen_map_w_sampling <- leaflet(CA_rad_spec) %>%
     fillColor = ~colors(year),  # Keep the fill color the same
     fillOpacity = 1,  # Fully opaque fill
     popup = ~paste("Scientific Name: ", specificEpithet, "<br>Year: ", year, "Herbarium:", institutionCode, "ID:", id),  # Popup with info
-    label = ~paste(specificEpithet, institutionCode, year),  # Add id as a label for searching
+    label = ~paste(specificEpithet, institutionCode, year, id),  # Add id as a label for searching
     group = "selectedPoints"  # Separate group for selected points
   ) %>%
   setView(lng = -119.4179, lat = 36.7783, zoom = 6) %>%  # Set the view over California
@@ -119,12 +147,718 @@ full_specimen_map_w_sampling <- leaflet(CA_rad_spec) %>%
  )
   )
 
-saveWidget(full_specimen_map_w_sampling, "bold_selected_CA_specimen_color_by_PC1_post_2000_new.html")
-
+saveWidget(full_specimen_map_w_sampling, "bold_selected_CA_specimen_color_by_year_new_DAV.html")
 ```
 
+##Collected specimen maps
+```{r}
+# import full dataset and list of sampled specimen IDs
+CA_rad_spec <- read.csv("Raphanus_specimens_all_2025.csv", header = T)
+samp_list <- read.csv("Herbarium_tissue_collected_tmp_251114.csv", header = T)
+
+# add specimen location gps coordinates from Natalie and Juliette's hand curation
+Nat_coords<- read.csv("/Users/juliaharencar/Documents/Github/Raphanus_Phenology/Output_Files/completed_specimen_data.csv", header = T)
+more_coords <- read.csv("CA_rad_spec_1915to40_missing.coords.csv", header = T)
+more_coords$decimalLatitude <- as.numeric(more_coords$decimalLatitude)
+yet_more <- read.csv("CA_rad_spec_sampled.to.251114_missing.coords_w_some_filled.csv", header = T)
+yet_more$decimalLatitude <- as.numeric(yet_more$decimalLatitude)
+
+CA_rad_spec <- CA_rad_spec %>%
+  rows_update(
+    Nat_coords %>% dplyr::select(id, decimalLatitude, decimalLongitude),
+    by = "id",
+    unmatched = "ignore"
+  ) %>% 
+  rows_update(
+    more_coords %>% dplyr::select(id, decimalLatitude, decimalLongitude),
+    by = "id",
+    unmatched = "ignore"
+  ) %>% 
+  rows_update(
+    yet_more %>% dplyr::select(id, decimalLatitude, decimalLongitude),
+    by = "id",
+    unmatched = "ignore"
+  )
+
+# # get list of specimens without GPS data:
+# missing.coords <- CA_rad_spec %>% filter(is.na(decimalLatitude))
+
+# Extract the IDs from the list of sampled specimens
+selected <- samp_list$id
+
+# Subset the complete dataframe based on the IDs
+samp_list_w.data <- CA_rad_spec %>%
+  filter(id %in% selected)
+
+# histogram: distibution of years 
+ggplot(samp_list_w.data, aes(x = year)) +
+  geom_histogram(binwidth = 5, col = "black", fill = "darkolivegreen3") +
+  scale_x_continuous(breaks = round(seq(1850, max(samp_list_w.data$year), by = 5), 1)) +
+  scale_y_continuous(breaks = seq(5, 70, by = 5)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+
+### new map colored by year to check sample distribution/make sure I didn't miss anything key 
+# NOTE: might need to run some of below lines for mapping stuff
+
+# if I want to limit it to just what I sampled
+# CA_rad_spec <- CA_rad_spec %>%
+#  filter(id %in% selected)
+
+# Function to make small equilateral triangle icons centered on the point
+make_triangle_uri <- function(hex_color, size = 10, stroke = "black", stroke_width = 2) {
+  col_enc <- gsub("#", "%23", hex_color)
+  sprintf(
+    "data:image/svg+xml;utf8,
+    <svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d' viewBox='0 0 20 20'>
+      <polygon points='10,3 18,17 2,17' fill='%s' stroke='%s' stroke-width='%.2f'/>
+    </svg>",
+    size, size, col_enc, stroke, stroke_width
+  )
+}
+
+# Prepare data and color palette
+selected_df <- CA_rad_spec %>% filter(id %in% selected)
+colors <- colorNumeric("Spectral", CA_rad_spec$year)
+
+# Generate triangle icons for selected points
+icon_size <- 10
+icon_urls <- vapply(colors(selected_df$year),
+                    FUN = make_triangle_uri,
+                    FUN.VALUE = character(1),
+                    size = icon_size)
+
+tri_icons <- icons(
+  iconUrl = icon_urls,
+  iconWidth = icon_size,
+  iconHeight = icon_size,
+  iconAnchorX = round(icon_size / 2),
+  iconAnchorY = round(icon_size / 2)
+)
+
+# Build leaflet map
+full_specimen_map_w_sampling <- leaflet(CA_rad_spec) %>%
+  addTiles() %>%
+  
+  # Base layer: all points
+  addCircleMarkers(
+    lat = ~decimalLatitude, 
+    lng = ~decimalLongitude, 
+    radius = 4,
+    color = ~colors(year),
+    stroke = FALSE,
+    fillOpacity = 1,
+    popup = ~paste("Scientific Name:", specificEpithet,
+                   "<br>Year:", year,
+                   "<br>Herbarium:", institutionCode,
+                   "<br>ID:", id),
+    label = ~paste(specificEpithet, institutionCode, year, id),
+    group = "allPoints"
+  ) %>%
+  
+  # Selected subset as triangles
+  addMarkers(
+    data = selected_df,
+    lat = ~decimalLatitude,
+    lng = ~decimalLongitude,
+    icon = tri_icons,
+    popup = ~paste("Scientific Name:", specificEpithet,
+                   "<br>Year:", year,
+                   "<br>Herbarium:", institutionCode,
+                   "<br>ID:", id),
+    label = ~paste(specificEpithet, institutionCode, year, id),
+    group = "selectedPoints",
+    options = markerOptions(riseOnHover = TRUE)
+  ) %>%
+  
+  # Legend, search, and view
+  setView(lng = -119.4179, lat = 36.7783, zoom = 6) %>%
+  addLegend(
+    position = "bottomright", 
+    pal = colors, 
+    values = ~year,
+    title = "Year",
+    opacity = 1
+  ) %>%
+  addSearchFeatures(
+    targetGroups = "allPoints",
+    options = searchFeaturesOptions(
+      zoom = 10,
+      openPopup = TRUE,
+      textPlaceholder = "Search map..."
+    )
+  )
+
+saveWidget(full_specimen_map_w_sampling, "triangle_sampled_CA_specimen_color_by_year_251125.html")
+```
+### climate PC1 color on sampled map
+#### clim PCA
+
+```{r}
+# import data
+CA_rad_spec <- read.csv("CCH2_all_2024.csv", header = T)
+post_2000 <- CA_rad_spec %>% dplyr::select(specificEpithet, year, decimalLatitude, decimalLongitude, county, institutionCode, id) %>% filter(year >= 2000)
+# s2015_e2019 <- CA_rad_spec %>% dplyr::select(specificEpithet, year, decimalLatitude, decimalLongitude, county) %>% filter(year >= 2015 & year <= 2019)
+
+# order by longitude
+post_2000 <- post_2000 %>% arrange(desc(decimalLatitude))
+# s2015_e2019 <- s2015_e2019 %>% arrange(desc(decimalLatitude))
+
+# import climate data:
+# DD5 = growing degree-days
+# MAP = mean annual precip
+# MAT = mean annual temp
+# MCMT = mean coldest month temperature (°C)
+# MWMT = mean warmest month temperature (°C)
+# SHM = summer heat-moisture index ((MWMT)/(MSP/1000))
+tiff_files <- list.files(path=".", pattern = "*.tif")
+rasters <- lapply(tiff_files, raster::raster)
+
+# precip_raster <- raster::raster("MAP.tif")
+
+# Check the projection 
+#crs(precip_raster) # '+proj=longlat +datum=WGS84 +no_defs"
+
+## extract data just for specific coordinates
+
+# get coordinates
+coordinates <- post_2000 %>% dplyr::select(decimalLongitude,decimalLatitude)
+# coordinates <- s2015_e2019 %>% dplyr::select(decimalLongitude,decimalLatitude)
+names(coordinates) <- c("longitude", "latitude")
+
+# Define empty data frame to store results
+climate_compiled <- data.frame(longitude = coordinates[,1], latitude = coordinates[,2])
+
+# Loop through each raster and extract data
+for (i in 1:length(rasters)) {
+  current_raster <- rasters[[i]]
+  current_data <- extract(current_raster, SpatialPoints(coordinates, proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs ")), sp = T)
+  current_df <- as.data.frame(current_data)
+  # Add new column with data from current raster
+  climate_compiled[, paste0("raster_", i)] <- current_df[,1]
+}
+
+names(climate_compiled) <- c("longitude", "latitude", "DD5", "MAP", "MAT", "MCMT", "MWMT", "SHM")
+
+# generate Climate PCA 
+# # add identifier for each specimen 
+# climate_compiled <- climate_compiled %>%
+#   mutate(specimen_no = row_number())
+
+# remove coordinates
+climate_data <- climate_compiled[, -c(1, 2)]
+
+# calculate principal components
+clim_pca <- prcomp(climate_data, center = TRUE, scale = TRUE)
+
+# # reverse signs (eigenvectors in R point in negative direction by default)
+# clim_pca$rotation <- -1*clim_pca$rotation
+# clim_pca$x <- -1*clim_pca$x
+
+# display principal components
+clim_pca$rotation
+
+# Basic biplot
+biplot(clim_pca, scale = 0)
+
+# extract PCA scores for plotting
+pca_scores <- as.data.frame(clim_pca$x)
+
+# add location info
+#pca_scores <- bind_cols(post_2000 %>% dplyr::select(county), pca_scores)
+pca_scores_post_2000 <- bind_cols(post_2000 %>% dplyr::select(specificEpithet, year, decimalLatitude, decimalLongitude, county, institutionCode, id), pca_scores)
+                        
+# Calculate the variance explained by each principal component
+per_variance_explained <- (clim_pca$sdev^2 / sum(clim_pca$sdev^2))*100
+# Create a data frame for the variance explained
+variance_df <- data.frame(
+  PC = paste0("PC", 1:length(per_variance_explained)),
+  Variance_Explained = per_variance_explained,
+  Cumulative_Variance = cumsum(per_variance_explained)
+)
+
+## plot with ggplot
+# # create PC loading vectors for plot
+# loadings <- clim_pca$rotation
+# # calculate arrow coordinates
+# start_x <- rep(0, ncol(loadings))
+# start_y <- rep(0, ncol(loadings))
+# end_x <- loadings[, 1] * max(abs(clim_pca$x[, 1]))
+# end_y <- loadings[, 2] * max(abs(clim_pca$x[, 2]))
+
+## plot no loadings
+# ggplot(pca_scores, aes(x=PC1, y=PC2, colour = county)) +
+#   geom_point() +
+#   labs(title = "Post 2000 specimens", x = "PC1 (66.6%)", y = "PC2 (24.5%)")
+ggplot(pca_scores, aes(x=PC1, y=PC2, colour = county)) +
+  geom_point() +
+  labs(title = "Specimens from 2015-2019", x = "PC1 (72.6%)", y = "PC2 (17.6%)")
+  
+ggsave("Climate_PCA_2015-2019.png", width = 20, height = 10, units = "cm")
+
+## biplot
+biplot(clim_pca, cex = c(0.5,1))
+ggbiplot(clim_pca)
+ggsave("Climate_biplot_2015-2019.png", width = 15, height = 15, units = "cm")
+```
+
+#### PC1 color map
+
+```{r}
+# import data
+#CA_rad_spec <- read.csv("CCH2_all_2024.csv", header = T)
+
+#CA_rad_spec_2015_2024 <- CA_rad_spec %>% filter(year >= 2015 & year <= 2024)
+
+# Load the GeoTIFF file
+precip_raster <- raster("MAP.tif")
+
+# Load the California shapefile
+california_shape <- st_read("./ca_state/CA_State.shp")
+
+# Reproject raster to match the CRS of the shapefile
+precip_raster_reproj <- projectRaster(precip_raster, crs = st_crs(california_shape)$proj4string)
+# Crop the raster using the California shapefile
+precip_raster_CA <- mask(crop(precip_raster_reproj, extent(california_shape)), california_shape)
+
+# assign coordinate system with right syntax (this is the system the raster is in)
+precip_raster_CA <- projectRaster(precip_raster_CA, crs = "+proj=longlat +datum=WGS84")
+
+# not working and apparently not needed
+# convert for leaflet
+#leaflet::projectRasterForLeaflet(precip_raster_CA)
+
+# Create a custom reversed palette function
+reversed_spectral <- function(n) {
+  original_palette <- brewer.pal(n, "Spectral")
+  rev(original_palette)
+}
+
+reversed_PuOr <- function(n) {
+  original_palette <- brewer.pal(n, "PuOr")
+  rev(original_palette)
+}
+
+custom_palette <- colorRampPalette(c("#2166AC", "#4393C3", "#92C5DE", "#F4A582", "#D6604D", "#B2182B"))
+
+pal <- colorNumeric(palette = custom_palette(100), domain = pca_scores_post_2000$PC1)
+
+specimen_map_leaflet <- leaflet(pca_scores_post_2000 ) %>%
+  addTiles() %>%  # Add OpenStreetMap tiles
+  addCircleMarkers(
+    lat = ~decimalLatitude, 
+    lng = ~decimalLongitude, 
+    radius = 7,  # Size of the markers
+    color = ~pal(PC1),
+    stroke = FALSE, fillOpacity = 1,  # Set fill opacity to 1 for fully opaque markers
+    popup = ~paste("Scientific Name: ", specificEpithet, "<br>Year: ", year, "Herbarium:", institutionCode, "ID:", id),  # Popup with info
+    label = ~paste(specificEpithet, institutionCode, id),  # add id as a label for searching
+    group = "allPoints"       # Assign a generic group name
+  ) %>%
+  setView(lng = -119.4179, lat = 36.7783, zoom = 6) %>%  # Set the view over California
+  addLegend(
+    position = "bottomright", 
+    pal = colorNumeric(reversed_spectral(9), CA_rad_spec$PC1), 
+    values = ~PC1,
+    title = "PC1",
+    opacity = 1
+  ) %>%
+  # Add a search bar to find points by ID
+  addSearchFeatures(
+    targetGroups = "allPoints",  # Search within all markers
+    options = searchFeaturesOptions(
+      zoom = 10,  # Zoom level when a match is found
+      openPopup = TRUE,  # Open the popup of the matching point
+      textPlaceholder = "Search map..."  # Placeholder text in the search bar
+    )
+  )
+
+saveWidget(specimen_map_leaflet, "interactive_CA_specimen_color_by_PC1_post_2000.html")
+```
+### 15-40/00-25 subset maps
+```{r}
+### Plot only post 2000s and 1915-1940 specimens to design first round of sampling
+CA_rad_spec_1915to40_post2000 <- CA_rad_spec %>%
+  filter((year >= 1915 & year <= 1940) | year > 2000)
+
+# print out full list to play with in excel, including col showing whether it has been sampled
+CA_rad_spec_1915to40_post2000 %>%
+  mutate(sampled = if_else(id %in% selected, "y", "n")) %>%
+  write.csv(file = "CA_rad_spec_1915to40_post2000.csv", row.names = FALSE)
+
+# list those from the same time period missing lat and long to know what I could add with some location research:
+CA_rad_spec_1915to40_post2000_missing.coords <- CA_rad_spec_1915to40_post2000 %>%
+  filter(is.na(decimalLatitude))
+# save list to see about getting location data:
+write.csv(CA_rad_spec_1915to40_post2000_missing.coords, file = "CA_rad_spec_1915to40_post2000_missing.coords.csv", row.names = FALSE)
+
+# Make a categorical variable for time period
+CA_rad_spec_1915to40_post2000 <- CA_rad_spec_1915to40_post2000 %>%
+  mutate(year = as.numeric(year)) %>%
+  mutate(period = case_when(
+    year >= 1915 & year <= 1940 ~ "1915–1940",
+    year > 2000 ~ "Post-2000",
+    TRUE ~ NA_character_
+  ))
+
+# Explicitly coerce the domain to a plain character vector
+domain_vec <- as.character(CA_rad_spec_1915to40_post2000)
+
+# Define a simple two-color palette (warm/cool)
+period_pal <- colorFactor(
+  palette = c("red", "#B66DFF"),
+  domain = domain_vec,
+  levels = c("1915–1940", "Post-2000")  # order/consistency
+)
+  
+# make small, equilateral triangle centered at the coordinate
+make_triangle_uri <- function(hex_color, size = 10, stroke = "black", stroke_width = 2) {
+  col_enc <- gsub("#", "%23", hex_color)
+  
+  # Equilateral triangle centered roughly at (10,10)
+  svg <- sprintf(
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d' viewBox='0 0 20 20'>
+      <polygon points='10,3 18,17 2,17' fill='%s' stroke='%s' stroke-width='%.2f'/>
+    </svg>",
+    size, size, col_enc, stroke, stroke_width
+  )
+  svg
+}
+
+icon_size <- 10  # triangle size
+
+sel_df <- CA_rad_spec_1915to40_post2000 %>% filter(id %in% selected)
+
+icon_urls <- vapply(period_pal(sel_df$period),
+                    FUN = make_triangle_uri,
+                    FUN.VALUE = character(1),
+                    size = icon_size)
+
+# Center anchor for alignment
+tri_icons <- icons(
+  iconUrl = icon_urls,
+  iconWidth = icon_size,
+  iconHeight = icon_size,
+  iconAnchorX = round(icon_size / 2),
+  iconAnchorY = round(icon_size / 2)
+)
+
+# Plot the map
+specimen_map_w_sampling_1915to40.post2000 <- leaflet(CA_rad_spec_1915to40_post2000) %>%
+  addTiles() %>%
+  
+  addCircleMarkers(
+    lat = ~decimalLatitude,
+    lng = ~decimalLongitude,
+    radius = 4,
+    fillColor = ~period_pal(period),
+    color = ~period_pal(period),
+    stroke = FALSE,
+    fillOpacity = 0.9,
+    popup = ~paste("Scientific Name:", specificEpithet, "<br>Year:", year,
+                   "<br>Herbarium:", institutionCode, "<br>ID:", id),
+    label = ~paste(specificEpithet, institutionCode, year, id),
+    group = "allPoints"
+  ) %>%
+  
+  addMarkers(
+    data = sel_df,
+    lat = ~decimalLatitude,
+    lng = ~decimalLongitude,
+    icon = tri_icons,
+    popup = ~paste("Scientific Name:", specificEpithet, "<br>Year:", year,
+                   "<br>Herbarium:", institutionCode, "<br>ID:", id),
+    label = ~paste(specificEpithet, institutionCode, year, id),
+    group = "selectedPoints",
+    options = markerOptions(riseOnHover = TRUE)
+  ) %>%
+  
+  addLegend(
+    position = "bottomright",
+    pal = period_pal,
+    values = ~period,
+    title = "Collection Period",
+    opacity = 1
+  ) %>%
+  
+  addSearchFeatures(
+    targetGroups = "allPoints",
+    options = searchFeaturesOptions(
+      zoom = 10, openPopup = TRUE,
+      textPlaceholder = "Search map..."
+    )
+  )
+
+saveWidget(specimen_map_w_sampling_1915to40.post2000, "triangle_sampled_CA_specimen_color_by_year_251024_subset15to40.post2000.html")
+```
+### extracted over sampled maps
+```{r}
+# import full dataset and list of sampled specimen IDs
+CA_rad_spec <- read.csv("Raphanus_specimens_all_2025.csv", header = T)
+samp_list <- read.csv("Herbarium_tissue_collected_tmp_251114.csv", header = T)
+# import lists of extracted specimens
+extracted <- read.csv("Raphanus_lab_database_tmp_251106.csv", header = T)
+colnames(extracted)[2] <- "id"
+
+# add specimen location gps coordinates from Natalie and Juliette's hand curation
+Nat_coords<- read.csv("/Users/juliaharencar/Documents/Github/Raphanus_Phenology/Output_Files/completed_specimen_data.csv", header = T)
+more_coords <- read.csv("CA_rad_spec_1915to40_missing.coords.csv", header = T)
+more_coords$decimalLatitude <- as.numeric(more_coords$decimalLatitude)
+yet_more <- read.csv("CA_rad_spec_sampled.to.251114_missing.coords_w_some_filled.csv", header = T)
+yet_more$decimalLatitude <- as.numeric(yet_more$decimalLatitude)
+
+CA_rad_spec <- CA_rad_spec %>%
+  rows_update(
+    Nat_coords %>% dplyr::select(id, decimalLatitude, decimalLongitude),
+    by = "id",
+    unmatched = "ignore"
+  ) %>% 
+  rows_update(
+    more_coords %>% dplyr::select(id, decimalLatitude, decimalLongitude),
+    by = "id",
+    unmatched = "ignore"
+  ) %>% 
+  rows_update(
+    yet_more %>% dplyr::select(id, decimalLatitude, decimalLongitude),
+    by = "id",
+    unmatched = "ignore"
+  )
+
+# Extract the IDs from the list of sampled specimens
+selected <- samp_list$id
+
+# Subset the complete dataframe based on the IDs
+samp_list_w.data <- CA_rad_spec %>%
+  filter(id %in% selected)
+
+# Extract IDs from list of extracted specimens
+extracted <- extracted$id 
+
+# ### Plot only post 2000s and 1915-1940 specimens to design first round of sampling
+# samp_list_w.data_1915to40_post2000 <- samp_list_w.data %>%
+#   filter((year >= 1915 & year <= 1940) | year > 2000)
+
+# # print out full list to play with in excel, including col showing whether it has been sampled
+# samp_list_w.data_1915to40_post2000 %>%
+#   mutate(sampled = if_else(id %in% selected, "y", "n")) %>%
+#   write.csv(file = "samp_list_w.data_1915to40_post2000.csv", row.names = FALSE)
+# 
+# # list those from the same time period missing lat and long to know what I could add with some location research:
+# samp_list_w.data_1915to40_post2000_missing.coords <- samp_list_w.data_1915to40_post2000 %>%
+#   filter(is.na(decimalLatitude))
+# # save list to see about getting location data:
+# write.csv(samp_list_w.data_1915to40_post2000_missing.coords, file = "sampled_1915to40_post2000_missing.coords_251106.csv", row.names = FALSE)
+
+# # Make a categorical variable for time period
+# samp_list_w.data_1915to40_post2000 <- samp_list_w.data_1915to40_post2000 %>%
+#   mutate(year = as.numeric(year)) %>%
+#   mutate(period = case_when(
+#     year >= 1915 & year <= 1940 ~ "1915–1940",
+#     year > 2000 ~ "Post-2000",
+#     TRUE ~ NA_character_
+#   ))
+# 
+# # Explicitly coerce the domain to a plain character vector
+# domain_vec <- as.character(samp_list_w.data_1915to40_post2000)
+# 
+# # Define a simple two-color palette (warm/cool)
+# period_pal <- colorFactor(
+#   palette = c("red", "#B66DFF"),
+#   domain = domain_vec,
+#   levels = c("1915–1940", "Post-2000")  # order/consistency
+# )
+#   
+# # make small, equilateral triangle centered at the coordinate
+# make_triangle_uri <- function(hex_color, size = 10, stroke = "black", stroke_width = 2) {
+#   col_enc <- gsub("#", "%23", hex_color)
+#   
+#   # Equilateral triangle centered roughly at (10,10)
+#   svg <- sprintf(
+#     "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='%d' height='%d' viewBox='0 0 20 20'>
+#       <polygon points='10,3 18,17 2,17' fill='%s' stroke='%s' stroke-width='%.2f'/>
+#     </svg>",
+#     size, size, col_enc, stroke, stroke_width
+#   )
+#   svg
+# }
+# 
+# icon_size <- 10  # triangle size
+# 
+# ext_df <- samp_list_w.data_1915to40_post2000 %>%
+#   filter(id %in% extracted) %>%
+#   mutate(
+#     specificEpithet = as.character(specificEpithet),
+#     institutionCode = as.character(institutionCode),
+#     id = as.character(id),
+#     year = as.character(year)
+#   )
+# 
+# icon_urls <- vapply(period_pal(ext_df$period),
+#                     FUN = make_triangle_uri,
+#                     FUN.VALUE = character(1),
+#                     size = icon_size)
+# 
+# # Center anchor for alignment
+# tri_icons <- icons(
+#   iconUrl = icon_urls,
+#   iconWidth = icon_size,
+#   iconHeight = icon_size,
+#   iconAnchorX = round(icon_size / 2),
+#   iconAnchorY = round(icon_size / 2)
+# )
+# 
+# # convert label cols to character
+# samp_list_w.data_1915to40_post2000$id <- as.character(samp_list_w.data_1915to40_post2000$id)
+# samp_list_w.data_1915to40_post2000$year <- as.character(samp_list_w.data_1915to40_post2000$year)
+# # Plot the map
+# specimen_map_w_extractions_1915to40.post2000 <- leaflet(samp_list_w.data_1915to40_post2000) %>%
+#   addTiles() %>%
+#   
+#   addCircleMarkers(
+#     lat = ~decimalLatitude,
+#     lng = ~decimalLongitude,
+#     radius = 4,
+#     fillColor = ~period_pal(period),
+#     color = ~period_pal(period),
+#     stroke = FALSE,
+#     fillOpacity = 0.9,
+#     popup = ~paste("Scientific Name:", specificEpithet, "<br>Year:", year,
+#                    "<br>Herbarium:", institutionCode, "<br>ID:", id),
+#     label = ~paste(specificEpithet, institutionCode, year, id),
+#     group = "allPoints"
+#   ) %>%
+#   
+#   addMarkers(
+#     data = ext_df,
+#     lat = ~decimalLatitude,
+#     lng = ~decimalLongitude,
+#     icon = tri_icons,
+#     popup = ~paste("Scientific Name:", specificEpithet, "<br>Year:", year,
+#                    "<br>Herbarium:", institutionCode, "<br>ID:", id),
+#     label = ~paste(specificEpithet, institutionCode, year, id),
+#     group = "extractedPoints",
+#     options = markerOptions(riseOnHover = TRUE)
+#   ) %>%
+#   
+#   addLegend(
+#     position = "bottomright",
+#     pal = period_pal,
+#     values = ~period,
+#     title = "Collection Period",
+#     opacity = 1
+#   ) %>%
+#   
+#   addSearchFeatures(
+#     targetGroups = "allPoints",
+#     options = searchFeaturesOptions(
+#       zoom = 10, openPopup = TRUE,
+#       textPlaceholder = "Search map..."
+#     )
+#   )
+# 
+# saveWidget(specimen_map_w_extractions_1915to40.post2000, "triangle_extracted_CA_specimen_color_by_subset15to40.post2000_251106.html")
+```
+
+### Distance based specimen selection
+```{r}
+library(geosphere)
+CA_rad_spec <- read.csv("Raphanus_specimens_all_2024.csv", header = T)
+samp_list <- read.csv("Herbarium_tissue_collected_tmp_251022.csv", header = T)
+# add specimen location gps coordinates from Ntalie's hand curation
+fulldata<- read.csv("/Users/juliaharencar/Documents/Github/Raphanus_Phenology/Output_Files/completed_specimen_data.csv", header = T)
+CA_rad_spec <- CA_rad_spec %>%
+  rows_update(
+    fulldata %>% dplyr::select(id, decimalLatitude, decimalLongitude),
+    by = "id",
+    unmatched = "ignore"
+  )
+# make separate dataframes for 20-40s and post 2000 specimens
+old <- CA_rad_spec %>%
+  filter(year >= 1920 & year <= 1940) %>% 
+  dplyr::select(id, catalogNumber, institutionCode, specificEpithet, year, month, county, decimalLatitude, decimalLongitude)
+         
+new <- CA_rad_spec %>%
+  filter(year > 2000) %>% 
+  dplyr::select(id, catalogNumber, institutionCode, specificEpithet, year, month, county, decimalLatitude, decimalLongitude)
+
+# calculate physical distance between all old and new points 
+pairs <- expand.grid(old_id = old$id, new_id = new$id, stringsAsFactors = FALSE) %>%
+  left_join(old %>% rename(old_lat = decimalLatitude, old_long = decimalLongitude), by = c("old_id" = "id")) %>%
+  left_join(new %>% rename(new_lat = decimalLatitude, new_long = decimalLongitude), by = c("new_id" = "id")) %>%
+  mutate(distance_km = distGeo(cbind(old_long, old_lat), cbind(new_long, new_lat)) / 1000)
+
+# make result dataframe with rows for all pairs where the distance is less than 20km (to start, change distance to get enough sampling)
+close_pairs <- pairs %>%
+  filter(distance_km < 25)
+
+# list number of samples in each group (old and recent) using unique()
+cat("Unique old samples:", length(unique(close_pairs$old_id)), "\n")
+cat("Unique new samples:", length(unique(close_pairs$new_id)), "\n")
+
+# plot and bold outline points selected by the distance calculations above
+old <- old %>%
+  mutate(selected = if_else(id %in% close_pairs$old_id, "y", "n"))
+
+new <- new %>%
+  mutate(selected = if_else(id %in% close_pairs$new_id, "y", "n"))
+
+ggplot() +
+  geom_point(data = old, aes(x = decimalLongitude, y = decimalLatitude, color = "old", alpha = 0.6)) +
+  geom_point(data = new, aes(x = decimalLongitude, y = decimalLatitude, color = "new", alpha = 0.6)) +
+  geom_point(data = old %>% filter(selected == "y"), aes(x = decimalLongitude, y = decimalLatitude),
+             color = "black", shape = 21, size = 3, stroke = 1.2) +
+  geom_point(data = new %>% filter(selected == "y"), aes(x = decimalLongitude, y = decimalLatitude),
+             color = "black", shape = 21, size = 3, stroke = 1.2) +
+  scale_color_manual(values = c("old" = "steelblue", "new" = "firebrick")) +
+  theme_minimal() +
+  labs(title = "Old (1920–1940) vs New (>2000) Specimens",
+       color = "Group", x = "Longitude", y = "Latitude")
+
+# make df of the specimens included from both old and new cohorts, with all cols from oridinal old/new dfs 
+# Get IDs of matched specimens
+matched_old_ids <- unique(close_pairs$old_id)
+matched_new_ids <- unique(close_pairs$new_id)
+
+# Find nearest match for each old specimen
+nearest_old <- close_pairs %>%
+  group_by(old_id) %>%
+  slice_min(distance_km, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  transmute(id = old_id, nearest_id = new_id, nearest_km = distance_km)
+
+# Find nearest match for each new specimen
+nearest_new <- close_pairs %>%
+  group_by(new_id) %>%
+  slice_min(distance_km, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  transmute(id = new_id, nearest_id = old_id, nearest_km = distance_km)
+
+# Subset the original old/new data for only matched specimens
+old_matched <- old %>%
+  filter(id %in% matched_old_ids) %>%
+  left_join(nearest_old, by = "id") %>%
+  mutate(cohort = "old")
+
+new_matched <- new %>%
+  filter(id %in% matched_new_ids) %>%
+  left_join(nearest_new, by = "id") %>%
+  mutate(cohort = "new")
+
+# Combine into one dataframe and add "sampled" columns
+matched_specimens <- bind_rows(old_matched, new_matched) %>%
+  mutate(
+    sampled = if_else(id %in% samp_list$id, "y", "n"),
+    nearest_sampled = if_else(nearest_id %in% samp_list$id, "y", "n")
+  )
+
+# Write to CSV
+write.csv(matched_specimens, "CA_rad_spec_matched_25km.csv", row.names = FALSE)
+```
+
+
 ## Climate PCA
-Plotting post-2000 specimens on climate PCA to get understanding of climatic distribution 
+
+Plotting post-2000 specimens on climate PCA to get understanding of climatic distribution
+
 ```{r}
 
 ## PICKUP
@@ -238,6 +972,7 @@ ggsave("Climate_biplot_2015-2019.png", width = 15, height = 15, units = "cm")
 ```
 
 ## Interactive plot color by PC1 from above to understand climate distribution
+
 ```{r}
 # import data
 #CA_rad_spec <- read.csv("CCH2_all_2024.csv", header = T)
@@ -309,7 +1044,9 @@ specimen_map_leaflet <- leaflet(pca_scores_post_2000 ) %>%
 
 saveWidget(specimen_map_leaflet, "interactive_CA_specimen_color_by_PC1_post_2000.html")
 ```
+
 ### Specimens to sample on climate PCA colored post 2000 map
+
 ```{r}
 sampling <- read.csv("Raphanus_sampling_specimens.csv", header = T) 
 selected <- sampling$id
@@ -364,6 +1101,7 @@ saveWidget(specimen_map_w_sampling, "bold_selected_CA_specimen_color_by_PC1_post
 ```
 
 ## Latest interactive plot of all CA specimens (09/2024)
+
 ```{r}
 # import data
 CA_rad_spec <- read.csv("CCH2_all_2024.csv", header = T)
@@ -468,6 +1206,7 @@ interactive_plot2 <- plot_geo(gbif_spec2, lat = ~decimalLatitude, lon = ~decimal
 ```
 
 ### Specimens to sample on map of all specimens
+
 ```{r}
 sampling <- read.csv("Raphanus_sampling_specimens.csv", header = T) 
 selected <- sampling$id
@@ -526,6 +1265,7 @@ saveWidget(full_specimen_map_w_sampling , "bold_selected_CA_specimen_by_year_all
 ```
 
 ## Reading in and cleaning data for all of US
+
 ```{r import and clean data}
 # Read in gbif data; search for "Raphanus L.", occurance status present, with or without coordinates, and US only.
 
@@ -571,7 +1311,9 @@ gbif_spec2 <- gbif_spec2 %>%
   ))
 
 ```
+
 ## Plot specimen collection locations
+
 ```{r plot all specimens}
 
 # plot all herbarium specimen locations on one map
@@ -655,7 +1397,9 @@ gbif_2panel <- Raph_spec_sati_map/Raph_spec_raph_map
 
 ggsave("gbif_R.sativus_R.raphinastrum_specimens_map.pdf", gbif_2panel, width = 7, height = 9, units = "in")
 ```
+
 ## California only specimen locations
+
 ```{r}
 # Load map of CA (FIX BOX)
 map <- get_map(location = c(lon=-119 , lat= 37.5), zoom =6, maptype = "terrain")
@@ -725,8 +1469,8 @@ ggsave("three_panel_CA_Raph_map.pdf", three_panel_CA_Raph_map, width = 4.5, heig
 
 ```
 
-
 ## Plot and count by county
+
 ```{r plot by county}
 
 # plot by county in California
@@ -814,8 +1558,8 @@ SE_per_co_counts <- gbif_spec2 %>%
 write.csv(SE_per_co_counts, file = "SE_per_co_counts.csv", row.names = FALSE)
 ```
 
-
 ## Plotting only old specimen locations
+
 ```{r plot based on time period}
 ## Plot only old specimens
 # Plot only pre 1900 specimen locations
@@ -916,7 +1660,9 @@ map_panel_20yr_periods <- (btw_1900.1920_Raph_spec_map/btw_1920.1940_Raph_spec_m
 ggsave("map_panel_20yr_periods.pdf", map_panel_20yr_periods, width = 14, height = 15, units = "in")
 
 ```
+
 # Plot all occurance/observation data
+
 ```{r}
 # plot all points (including observation data) on map
 Raph_all_map <- ggmap(map) +
@@ -946,8 +1692,8 @@ Raph_occ_map <- ggmap(map) +
 
 ```
 
-
 ## Tables and plots of number of specimens through time in different regions
+
 ```{r}
 ## Make a table for each 20 year period since 1920 (oldest is 1927)
 # the dataframe has already been filtered to only include herbarium specimen records from North America
@@ -1013,7 +1759,9 @@ SE_count_by_per.co.sp <- gbif_spec2 %>%
 # export to csv
 write.csv(SE_count_by_per.co.sp, file = "SE_specimen_count_by_per.co.sp.csv", row.names = FALSE)
 ```
+
 # Plot 5 year intervals
+
 ```{r plotting 5 yr intervals}
 # Create a new column for 5-year periods
 gbif_spec2 <- gbif_spec2 %>%
@@ -1084,8 +1832,8 @@ ggmap(map) +
 
 ```
 
-
 #Playing with some summary plots
+
 ```{r}
 # Stacked Bar Plot - too much with all the counties, but will be helpful looking at chosen counties and shorter time intervals
 ggplot(California_count_by_per.co.sp, aes(x = period, y = count, fill = simplifiedName)) +
@@ -1100,6 +1848,7 @@ ggplot(California_count_by_per.co.sp, aes(x = period, y = count, fill = simplifi
 ```
 
 # CCH2 data only
+
 ```{r}
 # Read in occurance data from CCH2 search for "Raphanus" (had to delete verbatim coordinates because contain crazy characters)
 occ_full <- read.csv("Raphanus_occurrences.csv", header = T)
