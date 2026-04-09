@@ -93,6 +93,167 @@ ggplot(samp_list_w.data, aes(x=year)) +
 
 ### newest map with sampling
 
+#### only 2026
+```{r}
+# --- 2026 tissue-collected specimens only: fill IDs from 2026 specimens, then map ---
+library(tidyverse)
+library(leaflet)
+library(leaflet.extras)
+library(htmlwidgets)
+
+# Column name may have trailing space when read
+herb <- read.csv("Herbarium_tissue_collected_260409.csv", header = TRUE, check.names = FALSE)
+all26 <- read.csv("Raphanus_specimens_all_2026.csv", header = TRUE)
+
+# Fix empty or NA column names (e.g. from trailing comma in CSV header)
+names(herb) <- ifelse(is.na(names(herb)) | names(herb) == "", paste0("V", seq_along(names(herb))), names(herb))
+
+# Standardize column name for tissue collected date
+date_col <- names(herb)[grepl("tissue collected date", names(herb), ignore.case = TRUE)]
+if (length(date_col) != 1) stop("Expected exactly one 'tissue collected date' column")
+names(herb)[names(herb) == date_col] <- "tissue_collected_date"
+
+# Keep only rows collected in 2026 (date ends with /26 or contains 2026)
+herb_2026 <- herb %>%
+  filter(
+    !is.na(tissue_collected_date),
+    tissue_collected_date != "",
+    grepl("/26$|2026", as.character(tissue_collected_date))
+  )
+
+# For rows with missing id: get id (and coords) from Raphanus_specimens_all_2026 by catalogNumber
+lookup <- all26 %>%
+  select(id, institutionCode, catalogNumber, decimalLatitude, decimalLongitude,
+         specificEpithet, year, county) %>%
+  filter(!is.na(catalogNumber), catalogNumber != "")
+
+# Match on catalogNumber; if multiple institutions, also match institutionCode when present
+herb_2026 <- herb_2026 %>%
+  mutate(
+    id_char = as.character(id),
+    id_filled = if_else(
+      is.na(id) | id_char == "" | id_char == "NA",
+      NA_character_,
+      id_char
+    )
+  )
+
+# Left join to fill id where missing (match by catalogNumber, then by institutionCode if available)
+herb_2026_filled <- herb_2026 %>%
+  left_join(
+    lookup %>% select(id, catalogNumber, institutionCode) %>% rename(id_from_2026 = id),
+    by = c("catalogNumber" = "catalogNumber", "institutionCode" = "institutionCode")
+  ) %>%
+  mutate(
+    id_filled = if_else(
+      is.na(id_filled) | id_filled == "",
+      as.character(id_from_2026),
+      id_filled
+    )
+  )
+
+# If no match on institution, try catalogNumber only (in case institution codes differ)
+still_missing <- herb_2026_filled %>% filter(is.na(id_filled) | id_filled == "")
+if (nrow(still_missing) > 0) {
+  by_cat <- still_missing %>%
+    select(catalogNumber) %>%
+    distinct() %>%
+    left_join(lookup %>% select(id, catalogNumber) %>% distinct(catalogNumber, .keep_all = TRUE),
+              by = "catalogNumber")
+  herb_2026_filled <- herb_2026_filled %>%
+    left_join(by_cat %>% rename(id_by_cat = id), by = "catalogNumber") %>%
+    mutate(
+      id_filled = case_when(
+        !is.na(id_filled) & id_filled != "" ~ id_filled,
+        !is.na(id_by_cat) ~ as.character(id_by_cat),
+        TRUE ~ id_filled
+      )
+    )
+}
+
+# Resolve final id (numeric for joining)
+herb_2026_filled <- herb_2026_filled %>%
+  mutate(id_resolved = as.numeric(id_filled)) %>%
+  filter(!is.na(id_resolved))
+
+# Optional: write back to Herbarium_tissue_collected.csv with filled ids
+# (Uncomment the next 3 lines if you want to update the CSV.)
+# herb_updated <- herb %>%
+#   left_join(herb_2026_filled %>% select(id_formula, catalogNumber, institutionCode, id_resolved),
+#             by = c("id_formula", "catalogNumber", "institutionCode")) %>%
+#   mutate(id = if_else(!is.na(id_resolved), id_resolved, id)) %>%
+#   select(-id_resolved)
+# write.csv(herb_updated, "Herbarium_tissue_collected.csv", row.names = FALSE)
+
+# Print table: 2026-collected IDs with id, year, tissue collected, leaf collected, locality (from all specimens sheet)
+specimen_cols <- c("id", "year", "stateProvince", "county", "municipality", "locality", "decimalLatitude", "decimalLongitude")
+specimen_cols <- intersect(specimen_cols, names(all26))
+
+summary_2026 <- herb_2026_filled %>%
+  select(id_resolved, tissue_collected_date, catalogNumber, institutionCode, any_of(c("DNA tissue", "leaf_tissue"))) %>%
+  left_join(
+    all26 %>% select(all_of(specimen_cols)),
+    by = c("id_resolved" = "id")
+  ) %>%
+  select(id = id_resolved, catalogNumber, institutionCode, year, tissue_collected_date, any_of("DNA tissue"), any_of("leaf_tissue"), stateProvince, county, municipality, locality, decimalLatitude, decimalLongitude) %>%
+  distinct()
+
+write.csv(summary_2026, "tissue_collected_2026_summary.csv", row.names = FALSE)
+
+# Get coordinates from 2026 specimen database for all resolved ids
+ids_2026 <- unique(herb_2026_filled$id_resolved)
+map_data <- all26 %>%
+  filter(id %in% ids_2026) %>%
+  filter(!is.na(decimalLatitude), !is.na(decimalLongitude)) %>%
+  mutate(
+    year = as.character(year),
+    id = as.character(id)
+  )
+
+# Color by year (like existing maps)
+colors <- colorNumeric("Spectral", domain = as.numeric(map_data$year))
+
+# Map: only 2026-collected points (no background layer)
+map_2026_collected <- leaflet(map_data) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    lat = ~decimalLatitude,
+    lng = ~decimalLongitude,
+    radius = 6,
+    color = ~colors(as.numeric(year)),
+    stroke = FALSE,
+    fillOpacity = 1,
+    popup = ~paste(
+      "Scientific Name:", specificEpithet,
+      "<br>Year:", year,
+      "<br>Herbarium:", institutionCode,
+      "<br>ID:", id,
+      "<br>Catalog:", catalogNumber
+    ),
+    label = ~paste(specificEpithet, institutionCode, year, id),
+    group = "allPoints"
+  ) %>%
+  setView(lng = -119.4179, lat = 36.7783, zoom = 6) %>%
+  addLegend(
+    position = "bottomright",
+    pal = colors,
+    values = ~as.numeric(year),
+    title = "Collection year",
+    opacity = 1
+  ) %>%
+  addSearchFeatures(
+    targetGroups = "allPoints",
+    options = searchFeaturesOptions(
+      zoom = 10,
+      openPopup = TRUE,
+      textPlaceholder = "Search map..."
+    )
+  )
+
+saveWidget(map_2026_collected, "tissue_collected_2026_map.html", selfcontained = TRUE)
+```
+
+
 ```{r}
 # new map colored by year to check sample distribution/make sure I didn't miss anything key 
 # NOTE: might need to run some of below lines for mapping stuff

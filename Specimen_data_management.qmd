@@ -75,17 +75,24 @@ CA_rad_spec$county <- trimws(CA_rad_spec$county) # trim whitespace
 # Extract the IDs from the list of sampled specimens
 selected <- samp_list$id
 
-# save list with data of sampled specimens
+# save just sampled specimen data
 sampled.data <- CA_rad_spec %>%
   filter(id %in% selected)
 write.csv(sampled.data, file = "CA_rad_spec_sampled.to.251114_all.csv", row.names = FALSE)
 
 # make a separate spreadsheet for each of the three focal regions to clean later:
 # filter for only so cal counties: filter to only include 
-sampled_so_cal <- CA_rad_spec$county %>% filter(county %in% c("Ventura","Los Angeles","San Bernardino","Orange","Riverside","San Diego"))
-                                       
-                                       
+sampled_LASD <- sampled.data %>% filter(county %in% c("Ventura","Los Angeles","San Bernardino","Orange","Riverside","San Diego"))
+write.csv(sampled_LASD, file = "CA_rad_spec_sampled.to.251114_LASD.csv", row.names = FALSE)
 
+sampled_BAYS <- sampled.data %>% filter(county %in% c("Sonoma","Napa","Solano","Marin","Contra Costa","Alameda","San Francisco","San Mateo", "Santa Clara","Santa Cruz","Monterey"))
+write.csv(sampled_BAYS, file = "CA_rad_spec_sampled.to.251114_BAYS.csv", row.names = FALSE)
+
+#NOTE: Solano co. spans Bay-Valley transition, so included in both
+# Valley also includes many cos with some coastal range or some Sierra
+sampled_VALY <- sampled.data %>% filter(county %in% c("Tehama","Glenn","Butte","Colusa","Sutter","Yuba","Nevada","Placer","Yolo","Sacramento","El Dorado","Solano","Amador","San Joaquin","Calaveras","Stanislaus","Merced"))
+write.csv(sampled_VALY, file = "CA_rad_spec_sampled.to.251114_VALY.csv", row.names = FALSE)
+                                       
 # get sampled specimens without GPS data:
 sampled.missing.coords <- CA_rad_spec %>%
   filter(id %in% selected) %>% 
