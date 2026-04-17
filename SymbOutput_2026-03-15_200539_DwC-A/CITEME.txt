@@ -1,0 +1,6 @@
+This data package was downloaded from a CCH2 Portal Portal Search on 2026-03-15 20:05:43.
+
+Please use the following format to cite this dataset:
+Biodiversity occurrence data published by: CCH2 Portal (accessed through the CCH2 Portal, https://cch2.org/portal, 2026-03-15).
+
+For more information on citation formats, please see the following page: https://cch2.org/portal/includes/usagepolicy.php
