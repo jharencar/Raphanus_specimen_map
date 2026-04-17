@@ -15,6 +15,24 @@ proj <- "/Users/admin-jgharenc/Documents/Github/Raphanus_specimen_map"
 setwd(proj)
 source("sequencing_plan_filters.R")
 
+#' Numeric ordering key for decade labels (e.g. pre.1890, 1890s) when year is missing.
+decade_sort_key <- function(decade_chr) {
+  d <- trimws(as.character(decade_chr))
+  key <- rep(NA_real_, length(d))
+  for (i in seq_along(d)) {
+    di <- d[i]
+    if (is.na(di) || !nzchar(di)) next
+    if (grepl("^pre\\.", di, ignore.case = TRUE)) {
+      y <- suppressWarnings(as.numeric(sub("^pre\\.(\\d{4}).*$", "\\1", di, perl = TRUE)))
+      key[i] <- if (is.finite(y)) y - 0.5 else NA_real_
+    } else {
+      m <- regmatches(di, regexpr("[0-9]{4}", di))
+      key[i] <- if (length(m)) suppressWarnings(as.numeric(m)) else NA_real_
+    }
+  }
+  key
+}
+
 norm_cat <- function(x) {
   x <- trimws(as.character(x))
   x[x %in% c("", "NA", "#N/A", "0", "0.0")] <- NA_character_
@@ -100,24 +118,33 @@ message(
   "Plotted with coordinates: ", n_map, " | Missing coords: ", n_lab - n_map
 )
 
-dec_rank <- map_df %>%
+# Decade order: chronological (min plan year per decade, else parsed label)
+dec_rank <- lab2 %>%
   group_by(decade) %>%
-  summarise(yr = suppressWarnings(min(as.numeric(as.character(year)), na.rm = TRUE)), .groups = "drop") %>%
-  mutate(yr = ifelse(is.finite(yr), yr, NA_real_)) %>%
-  arrange(yr, decade)
+  summarise(
+    yr_min = suppressWarnings(min(as.numeric(as.character(year)), na.rm = TRUE)),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    yr_min = if_else(is.finite(yr_min), yr_min, NA_real_),
+    sort_key = dplyr::coalesce(yr_min, decade_sort_key(decade))
+  ) %>%
+  arrange(sort_key, decade)
 
 dec_levels <- dec_rank$decade
 map_df <- map_df %>%
-  mutate(decade_f = factor(as.character(decade), levels = unique(dec_levels)))
+  mutate(decade_f = factor(as.character(decade), levels = dec_levels))
 
 n_dec <- length(levels(map_df$decade_f))
-pal_cols <- if (n_dec <= 12) {
-  brewer.pal(max(3, n_dec), "Set3")[seq_len(n_dec)]
+# Discrete Spectral (same palette family as year maps); one shade per decade in time order
+spectral_11 <- brewer.pal(11, "Spectral")
+pal_cols <- if (n_dec <= 1L) {
+  spectral_11[6L]
 } else {
-  colorRampPalette(brewer.pal(12, "Set3"))(n_dec)
+  colorRampPalette(spectral_11)(n_dec)
 }
 
-dec_pal <- colorFactor(palette = pal_cols, domain = map_df$decade_f)
+dec_pal <- colorFactor(palette = pal_cols, domain = levels(map_df$decade_f))
 
 icon_size <- 12
 make_triangle_uri <- function(hex_color, size = icon_size, stroke = "black", stroke_width = 1.5) {
@@ -195,17 +222,43 @@ if (has_pandoc) {
 
 message("Wrote ", file.path(proj, out_html))
 
-# Optional: quick static check
-p <- ggplot(map_df, aes(x = decade_f, fill = decade_f)) +
-  geom_bar() +
-  scale_fill_manual(values = setNames(pal_cols, levels(map_df$decade_f)), guide = "none") +
+# Histogram: all Qubit-passing plan rows, stacked by primary regions (+ no region)
+hist_df <- lab2 %>%
+  mutate(
+    decade_f = factor(as.character(decade), levels = dec_levels),
+    region_f = factor(
+      region_group(region),
+      levels = c("BAYS", "SDLA", "VALY", "no region")
+    )
+  )
+
+region_fill <- c(
+  "BAYS" = "#1b9e77",
+  "SDLA" = "#d95f02",
+  "VALY" = "#7570b3",
+  "no region" = "#cccccc"
+)
+
+p <- ggplot(hist_df, aes(x = decade_f, fill = region_f)) +
+  geom_bar(
+    position = position_dodge(width = 0.88, preserve = "single"),
+    width = 0.8,
+    color = "grey30",
+    linewidth = 0.15
+  ) +
+  scale_x_discrete(limits = dec_levels, drop = FALSE) +
+  scale_fill_manual(values = region_fill, name = "Region", drop = FALSE) +
   labs(
-    title = "Sequencing plan: specimens per decade (Qubit >= 0.01, excluding 'low'; with coordinates)",
+    title = "Sequencing plan: specimens per decade (Qubit filter applied; all plan rows)",
+    subtitle = "Side-by-side bars by BAYS, SDLA, VALY; other/blank regions as 'no region'",
     x = NULL,
     y = "Count"
   ) +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
 
-ggsave("sequencing_plan_counts_by_decade.pdf", p, width = 10, height = 5, units = "in")
+ggsave("sequencing_plan_counts_by_decade.pdf", p, width = 11, height = 5.5, units = "in")
 message("Wrote sequencing_plan_counts_by_decade.pdf")

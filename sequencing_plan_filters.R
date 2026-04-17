@@ -13,7 +13,22 @@ qbit_keep <- function(x) {
   is_low <- tolower(v) == "low"
   num <- suppressWarnings(as.numeric(v))
   is_small <- !is.na(num) & num < 0.01
-  is_x | !(is_low | is_small)
+  drop <- !is_x & (is_low | is_small)
+  !drop | is.na(drop)
+}
+
+#' Reason a value is excluded by qbit_keep(): literal "low" vs numeric < 0.01.
+#' (Only meaningful for rows where !qbit_keep(x); otherwise may return "other".)
+qubit_exclude_reason <- function(x) {
+  v <- trimws(as.character(x))
+  is_low <- tolower(v) == "low"
+  num <- suppressWarnings(as.numeric(v))
+  is_small <- !is.na(num) & num < 0.01
+  dplyr::case_when(
+    is_low ~ "text_low",
+    is_small ~ "numeric_lt_0.01",
+    TRUE ~ "other"
+  )
 }
 
 #' SDLA, BAYS, VALY preserved; everything else (NA, blank, humboldt, …) -> "no region"

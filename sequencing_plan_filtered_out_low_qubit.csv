@@ -1,0 +1,10 @@
+"lab_row","qubit_filter_reason","Qbit_ng.ul","region","decade","id","cat_id","DNA_tissue","leaf_tissue","sampled.","extracted.","lab_id","Nano_ng.ul","X260.280","X260.230","successful.","institutionCode","catalogNumber","year","county","locality","decimalLatitude","decimalLongitude","notes","extr_tissue"
+5,"text_low","low","SDLA","1890s","2286213","74276","3 axillary buds, 1 terminal bud cluster, 1 little leaf ","yes, basal","y","y-N","26_139",3.1,1.99,2.6,,,,1891,,,,,,
+18,"text_low","low","SDLA","1900s","3542265","UC66740","1 terminal bud cluster, 2 axiallary buds","yes, basal","y",,"26_118",4,1.3,1.1,,,,1904,,,,,,
+73,"text_low","LOW","SDLA","1950s","304597","UCSB032064","buds w extra","yes, cauline with basal morphology","y","y-N","25_208",5.4,1.49,1.17,"n",,,1954,,,,,"san diego",
+83,"numeric_lt_0.01","0","SDLA","1960s","375697","SDSU01220","multiple axillary bud clusters","yes, cauline with basal morphology","y","y-N","25_128",2.7,2.54,0.69,"n",,,1969,,,,,"san diego",
+89,"numeric_lt_0.01","0","SDLA","1970s","106537","SBBG213844","6 bud clusters","yes, cauline w/ intermediate morphology","y","y","25_129",2.6,2.39,0.72,"n",,,1977,,,,,,
+131,"text_low","low","VALY","pre.1890","3351467","JEPS53818","1 axiallary bud cluster, 2 apical bud clusters, extra buds","yes, cauline","y","fail","26_143",2.3,1.55,-2.43,"n",,,1884,,,,,,
+227,"text_low","low","BAYS","1890s","3366602","UC10776","2 terminal bud clusters","yes, basal","y","y-N","26_138",3.7,2.18,1.41,,,,1893,,,,,,
+230,"text_low","low","BAYS","1890s","3511149","JEPS53812","4 terminal bud clusters","yes, basal","y","y-N","26_135",2.6,2.37,6.13,,,,1897,,,,,,
+300,"text_low","LOW","BAYS","1950s","2270810","74353","1 large axillary bud, 1 terminal bud cluster","yes, cauline with basal morphology","y"," y-N","25_141",7.8,1.6,1.34,"n",,,1950,,,,,"santa cruz; OR 2334980/2450089",

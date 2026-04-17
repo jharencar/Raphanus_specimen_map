@@ -2,6 +2,7 @@
 # Rows from Raphanus_lab_database_sequencing_plan.csv that still lack coordinates
 # after joining Raphanus_specimens_all_2026.csv (same logic as map_sequencing_plan_by_decade.R).
 # Applies Qubit filter: drops "low" and numeric values < 0.01 (same as mapping script).
+# Also writes sequencing_plan_filtered_out_low_qubit.csv (rows removed by that filter).
 
 suppressPackageStartupMessages({
   library(dplyr)
@@ -56,6 +57,25 @@ spec_cat <- spec %>%
   filter(!is.na(cat_norm))
 
 qc <- qbit_col(lab)
+
+low_qubit_out <- lab %>%
+  dplyr::mutate(lab_row = dplyr::row_number()) %>%
+  dplyr::filter(!qbit_keep(.data[[qc]])) %>%
+  dplyr::mutate(qubit_filter_reason = qubit_exclude_reason(.data[[qc]])) %>%
+  dplyr::select(
+    lab_row,
+    qubit_filter_reason,
+    dplyr::any_of(qc),
+    dplyr::everything()
+  )
+
+low_csv <- "sequencing_plan_filtered_out_low_qubit.csv"
+write.csv(low_qubit_out, low_csv, row.names = FALSE, na = "")
+message(
+  "Qubit-filtered-out rows: ", nrow(low_qubit_out), " -> ",
+  file.path(getwd(), low_csv)
+)
+
 lab2 <- lab %>%
   mutate(
     lab_row = dplyr::row_number(),
@@ -180,6 +200,7 @@ if (requireNamespace("writexl", quietly = TRUE)) {
   out_xlsx <- "sequencing_plan_missing_coordinates.xlsx"
   writexl::write_xlsx(
     list(
+      filtered_low_qubit = low_qubit_out,
       missing_coordinates = missing,
       summary_decade_by_region = missing_summary_wide,
       summary_long = missing_summary_long
