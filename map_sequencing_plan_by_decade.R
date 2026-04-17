@@ -118,20 +118,18 @@ message(
   "Plotted with coordinates: ", n_map, " | Missing coords: ", n_lab - n_map
 )
 
-# Decade order: chronological (min plan year per decade, else parsed label)
-dec_rank <- lab2 %>%
-  group_by(decade) %>%
-  summarise(
-    yr_min = suppressWarnings(min(as.numeric(as.character(year)), na.rm = TRUE)),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    yr_min = if_else(is.finite(yr_min), yr_min, NA_real_),
-    sort_key = dplyr::coalesce(yr_min, decade_sort_key(decade))
-  ) %>%
-  arrange(sort_key, decade)
-
-dec_levels <- dec_rank$decade
+# Decade order (fixed): user list; "1909s" in request interpreted as "1990s"
+dec_levels_core <- c(
+  "pre.1890", "1890s", "1900s", "1910s", "1920s", "1930s", "1940s",
+  "1950s", "1960s", "1970s", "1980s", "1990s", "2000s", "2010s"
+)
+in_data <- unique(as.character(lab2$decade))
+extra <- setdiff(in_data, dec_levels_core)
+if (length(extra)) {
+  sk <- decade_sort_key(extra)
+  extra <- extra[order(sk, extra)]
+}
+dec_levels <- c(dec_levels_core, extra)
 map_df <- map_df %>%
   mutate(decade_f = factor(as.character(decade), levels = dec_levels))
 
